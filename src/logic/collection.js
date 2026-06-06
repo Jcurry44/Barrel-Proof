@@ -52,27 +52,28 @@
     {
       match: ["george t stagg", "gts"],
       label: "George T. Stagg",
-      batches: ["2017", "2018", "2019", "2020", "2022", "2023", "2024"]
+      // GTS was not released in 2021 (barrels didn't meet profile).
+      batches: ["2017", "2018", "2019", "2020", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["william larue weller", "w l w", "wlw"],
       label: "William Larue Weller",
-      batches: ["2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"]
+      batches: ["2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["thomas h handy", "thomas handy"],
       label: "Thomas H. Handy",
-      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024"]
+      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["eagle rare 17"],
       label: "Eagle Rare 17",
-      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024"]
+      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["old forester birthday", "birthday bourbon"],
       label: "Old Forester Birthday Bourbon",
-      batches: ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"]
+      batches: ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["parker s heritage", "parkers heritage"],

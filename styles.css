@@ -1942,6 +1942,25 @@ h3 {
 .shelf-card-tap:hover { border-color: var(--line-strong); }
 .shelf-card-tap:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
+.wiz-picks-row { margin: 2px 0 6px; }
+.wiz-picks-toggle {
+  padding: 6px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wiz-picks-toggle:hover { color: var(--cream); border-color: var(--brass); }
+.wiz-picks-toggle.on {
+  border-style: solid;
+  border-color: var(--brass-strong);
+  background: rgba(203, 163, 90, 0.16);
+  color: var(--cream);
+}
+
 @media (min-width: 720px) {
   .scorecard-backdrop { align-items: center; padding: 24px; }
   .scorecard-card { border-radius: 20px; max-height: 90vh; }

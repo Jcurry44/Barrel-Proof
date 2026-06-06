@@ -56,6 +56,7 @@
         wizIdx: 0,
         wizQuery: "",
         wizFilter: "all",
+        wizHidePicks: true,
         wizExpanded: "",
         pourOffset: 0,
         showdownView: "arena",
@@ -2415,6 +2416,8 @@
       }
     } else if (action === "filter") {
       ctx.ui.wizFilter = target.dataset.filter;
+    } else if (action === "toggle-picks") {
+      ctx.ui.wizHidePicks = !(ctx.ui.wizHidePicks !== false);
     } else if (action === "own") {
       C.toggle(ctx.state, bottleId);
       persist(ctx);
@@ -2507,7 +2510,13 @@
     const houseName = (wizHouseList(ctx).find((h) => h.id === houseId) || {}).name || "House";
     const q = (ctx.ui.wizQuery || "").trim().toLowerCase();
     const filter = ctx.ui.wizFilter;
-    const lines = all.filter((g) => wizMatchFilter(g, filter) && (!q || g.rep.name.toLowerCase().includes(q) || g.members.some((m) => m.name.toLowerCase().includes(q))));
+    const hidePicks = ctx.ui.wizHidePicks !== false;
+    const pickCount = all.filter((g) => g.type === "pick").length;
+    const lines = all.filter((g) =>
+      wizMatchFilter(g, filter) &&
+      (!hidePicks || g.type !== "pick") &&
+      (!q || g.rep.name.toLowerCase().includes(q) || g.members.some((m) => m.name.toLowerCase().includes(q)))
+    );
     const shown = lines.slice(0, 60);
     const filters = [["all", "All"], ["barrel", "Barrel proof"], ["single", "Single barrel"], ["bonded", "Bonded"], ["allocated", "Allocated"], ["standard", "Standard"]];
     return `
@@ -2523,6 +2532,7 @@
         <div class="filter-row">
           ${filters.map(([v, l]) => `<button class="filter-button${filter === v ? " active" : ""}" type="button" data-wiz="filter" data-filter="${v}">${l}</button>`).join("")}
         </div>
+        ${pickCount ? `<div class="wiz-picks-row"><button class="wiz-picks-toggle${hidePicks ? "" : " on"}" type="button" data-wiz="toggle-picks">${hidePicks ? "Show single-barrel store picks (" + pickCount + ")" : "Hide store picks"}</button></div>` : ""}
         <div class="wiz-lines">
           ${shown.map((g) => renderWizLine(ctx, g)).join("") || emptyState("No bottles match. Try a different filter.")}
         </div>
