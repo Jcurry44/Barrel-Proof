@@ -1,10 +1,13 @@
-const CACHE_NAME = "barrel-proof-shell-v42";
+const CACHE_NAME = "barrel-proof-shell-v43";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./manifest.json",
   "./icon.svg",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./apple-touch-icon.png",
   "./src/data/bottles.js",
   "./src/data/friends.js",
   "./src/data/cocktails.js",
