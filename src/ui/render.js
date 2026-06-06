@@ -547,7 +547,9 @@
       const target = event.target;
       if (target.id === "storeSearch") {
         ctx.ui.query = target.value;
-        scheduleRender(ctx, 80);
+        // Update ONLY the results list, never the input — re-rendering the input
+        // mid-keystroke is what dropped characters. The input keeps focus + cursor.
+        scheduleStoreResults(ctx);
       }
       if (target.id === "storePrice") {
         ctx.state.storePrice = Number(target.value);
@@ -617,6 +619,26 @@
       ctx.ui.renderTimer = null;
       render(ctx);
     }, delay);
+  }
+
+  // Search-as-you-type: refresh only the results list, never the input element.
+  function scheduleStoreResults(ctx) {
+    if (ctx.ui.storeResultsTimer) global.clearTimeout(ctx.ui.storeResultsTimer);
+    ctx.ui.storeResultsTimer = global.setTimeout(() => {
+      ctx.ui.storeResultsTimer = null;
+      const list = ctx.mount && ctx.mount.querySelector ? ctx.mount.querySelector(".bottle-list") : null;
+      if (list) list.innerHTML = renderStoreResults(ctx);
+      else render(ctx);
+    }, 110);
+  }
+
+  function renderStoreResults(ctx) {
+    const filtered = getFilteredBottleInfo(ctx);
+    return `
+      ${renderSearchSummary(filtered)}
+      ${renderStorePicksToggle(ctx, filtered)}
+      ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
+    `;
   }
 
   // On phones the cocktail spec stacks below the card list, so a tap updated
@@ -925,7 +947,6 @@
   }
 
   function renderStore(ctx) {
-    const filtered = getFilteredBottleInfo(ctx);
     const importedCount = ctx.catalogMeta.importedBottleCount || Math.max(0, ctx.bottles.length - 10);
     const fullCount = ctx.catalogMeta.fullBottleCount || importedCount;
     const rawCatalogNote = fullCount > importedCount
@@ -950,9 +971,7 @@
         </section>
 
         <section class="bottle-list" aria-label="Bottle results">
-          ${renderSearchSummary(filtered)}
-          ${renderStorePicksToggle(ctx, filtered)}
-          ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
+          ${renderStoreResults(ctx)}
         </section>
       </section>
     `;
