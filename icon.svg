@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Barrel Proof icon">
+  <rect width="512" height="512" rx="96" fill="#120d0b"/>
+  <rect x="18" y="18" width="476" height="476" rx="82" fill="none" stroke="#cba35a" stroke-opacity="0.45" stroke-width="6"/>
+  <path d="M184 126h144l-18 48v176c0 44-34 80-76 80s-76-36-76-80V174z" fill="#b56b29"/>
+  <path d="M190 156h132l-10 26H200z" fill="#f5efe4"/>
+  <rect x="184" y="232" width="144" height="102" rx="18" fill="#241917" stroke="#f1cd84" stroke-width="8"/>
+  <path d="M214 272h84" stroke="#f1cd84" stroke-width="12" stroke-linecap="round"/>
+  <path d="M226 302h60" stroke="#f5efe4" stroke-width="8" stroke-linecap="round"/>
+  <path d="M166 194h180" stroke="#7c2f2b" stroke-width="16" stroke-linecap="round"/>
+  <path d="M168 368h176" stroke="#7c2f2b" stroke-width="16" stroke-linecap="round"/>
+</svg>

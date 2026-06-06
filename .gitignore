@@ -1,0 +1,13 @@
+# Build inputs & the generated full catalog — regenerable from the official
+# sources and NOT needed to run the app. Kept out of the deployed site so the
+# GitHub Pages repo stays small and fast.
+/data/imports/
+/data/raw/
+/src/data/imported-catalog.json
+
+# Tooling / OS
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+desktop.ini

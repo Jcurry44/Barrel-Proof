@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "ttb_cola_public_registry",
+      "name": "TTB COLA Public Registry",
+      "type": "federal_label_registry",
+      "authority": "Alcohol and Tobacco Tax and Trade Bureau",
+      "url": "https://www.ttb.gov/what-we-do/online-services/public-cola-registry",
+      "bestFor": ["label approvals", "producer identity", "label images", "release discovery"],
+      "limits": ["not retail availability", "not market price", "not always clean product family grouping", "search result exports are capped"]
+    },
+    {
+      "id": "nc_abc",
+      "name": "North Carolina ABC Quarterly Price List",
+      "type": "control_state_catalog",
+      "authority": "North Carolina ABC Commission",
+      "url": "https://abc2.nc.gov/Pricing/PriceList",
+      "bestFor": ["brand name", "supplier", "serious whiskey category", "age", "proof", "size", "retail price"],
+      "limits": ["availability is local-board dependent", "names may be abbreviated", "not national market price"]
+    },
+    {
+      "id": "nc_abc_warehouse_stock",
+      "name": "North Carolina ABC Daily Warehouse Stock Report",
+      "type": "control_state_inventory",
+      "authority": "North Carolina ABC Commission",
+      "url": "https://abc2.nc.gov/StoresBoards/Stocks",
+      "bestFor": ["NC code", "full brand name", "listing type", "warehouse total available", "size", "cases per pallet", "supplier", "supplier allotment", "broker name", "daily report date"],
+      "limits": ["North Carolina warehouse stock only", "does not include retail price", "proof, age, and category are hydrated from the matched NC ABC price-list row when available"]
+    },
+    {
+      "id": "ohlq_brand_master",
+      "name": "Ohio Liquor Brand Master",
+      "type": "control_state_catalog",
+      "authority": "Ohio Division of Liquor Control / JobsOhio Beverage System",
+      "url": "https://ops.ohlq.com/brandmaster/public",
+      "bestFor": ["Ohio product code", "brand name", "serious whiskey category", "type", "subtype", "size", "retail price", "wholesale price", "status"],
+      "limits": ["Ohio catalog only", "does not include proof", "does not include producer/distillery"]
+    },
+    {
+      "id": "olcc_monthly_pricing",
+      "name": "Oregon Liquor and Cannabis Commission Monthly Pricing",
+      "type": "control_state_catalog",
+      "authority": "Oregon Liquor and Cannabis Commission",
+      "url": "https://catalog.data.gov/dataset/olcc-monthly-pricing",
+      "bestFor": ["product code", "brand name", "serious whiskey category", "source category", "age", "proof", "size", "retail price", "status", "price history"],
+      "limits": ["Oregon catalog only", "dataset freshness depends on the published Data.gov feed", "does not include producer/distillery"]
+    },
+    {
+      "id": "iowa_abd_products",
+      "name": "Iowa Liquor Products",
+      "type": "control_state_catalog",
+      "authority": "Iowa Department of Revenue, Alcoholic Beverages Division",
+      "url": "https://data.iowa.gov/Sales-Distribution/Iowa-Liquor-Products/gckp-fe7r",
+      "bestFor": ["item number", "brand name", "serious whiskey category", "vendor", "age", "proof", "size", "UPC", "state bottle retail", "state bottle cost", "report date"],
+      "limits": ["Iowa catalog only", "retail value is the purchase price for stores ordering from Iowa ABD", "producer/distillery is not separated from vendor"]
+    },
+    {
+      "id": "idaho_liquor_price_book",
+      "name": "Idaho State Liquor Division Monthly Price Book",
+      "type": "control_state_catalog",
+      "authority": "Idaho State Liquor Division",
+      "url": "https://liquor.idaho.gov/wp-content/uploads/2026/05/0626-Price-Book-Category.pdf",
+      "bestFor": ["state product code", "brand name", "serious whiskey category", "source category", "proof", "size", "retail price", "licensee price", "effective pricing period"],
+      "limits": ["Idaho price book only", "PDF text extraction is less structured than CSV or JSON", "does not include UPC", "producer/distillery is not separated as a structured field"]
+    },
+    {
+      "id": "utah_dabs_product_list",
+      "name": "Utah DABS Product List",
+      "type": "control_state_catalog",
+      "authority": "Utah Department of Alcoholic Beverage Services",
+      "url": "https://abs.utah.gov/shop-products/interactive-product-list/",
+      "bestFor": ["product code", "brand name", "serious whiskey category", "category codes", "size", "retail price", "status", "special pricing flag", "vendor"],
+      "limits": ["Utah catalog only", "does not include proof", "does not include age statement as structured data"]
+    },
+    {
+      "id": "michigan_lcc_price_book",
+      "name": "Michigan Liquor Control Commission Spirits Price Book",
+      "type": "control_state_catalog",
+      "authority": "Michigan Liquor Control Commission",
+      "url": "https://www.michigan.gov/lara/bureau-list/lcc/spirits-price-book-info",
+      "bestFor": ["liquor code", "brand name", "serious whiskey category", "liquor type", "vendor", "authorized distributor", "proof", "size", "UPC", "shelf price", "on-premise price", "off-premise price", "effective date"],
+      "limits": ["Michigan catalog only", "does not include age statement as structured data", "vendor is not always the distillery or producer"]
+    },
+    {
+      "id": "alabama_abc_quarterly_price_list",
+      "name": "Alabama ABC Quarterly Price List",
+      "type": "control_state_catalog",
+      "authority": "Alabama Alcoholic Beverage Control Board",
+      "url": "https://alabcboard.gov/product-management/QPL",
+      "bestFor": ["ABC product number", "product name", "serious whiskey category", "source section", "proof parsed from name", "age parsed from name", "size parsed from name", "pack", "bottle price", "case price", "allocated and closeout section signals"],
+      "limits": ["Alabama catalog only", "proof/age/size are parsed from product names instead of separate source fields", "some sections require conservative name/brand matching because subcategory fields are not always provided"]
+    },
+    {
+      "id": "montana_dor_price_disk",
+      "name": "Montana Department of Revenue Price Disk",
+      "type": "control_state_catalog",
+      "authority": "Montana Department of Revenue",
+      "url": "https://revenuefiles.mt.gov/card/alcoholic-beverages/agency-liquor-stores/product-information",
+      "bestFor": ["item code", "NABCA number", "product class", "serious whiskey category", "product name", "size code", "units per case", "bottle price", "inventory class", "maintained flag", "repack data", "monthly price disk"],
+      "limits": ["Montana catalog only", "proof and age are parsed from abbreviated product names when present", "product class is encoded in the item code and still needs conservative filtering for specialty whiskey"]
+    },
+    {
+      "id": "mississippi_abc_price_changes",
+      "name": "Mississippi ABC 2026 SPAs and Bailment Price Changes",
+      "type": "control_state_price_changes",
+      "authority": "Mississippi Department of Revenue Alcoholic Beverage Control",
+      "url": "https://www.dor.ms.gov/abc/sales-distribution/past-price-changes-spas",
+      "bestFor": ["item code", "product name", "category", "size", "units per case", "effective date", "ABC bottle cost", "SPA bottle cost", "status/change fields"],
+      "limits": ["Mississippi price-change and SPA documents only", "prices are ABC bottle-cost observations, not consumer shelf retail", "not a full current catalog", "proof and age are parsed from product names when present"]
+    },
+    {
+      "id": "wv_abca_liquor_search",
+      "name": "West Virginia ABCA Liquor Search",
+      "type": "state_product_catalog_search",
+      "authority": "West Virginia Alcohol Beverage Control Administration",
+      "url": "https://www.wvabca.com/liquorsearch.aspx",
+      "bestFor": ["product ID", "configuration ID", "product name", "bottle sizes", "public search coverage for bourbon, rye, Tennessee whiskey, American whiskey, American single malt, wheat whiskey, Canadian whisky, Scotch, Irish whiskey, Japanese whisky, and broad whisky terms"],
+      "limits": ["West Virginia search only", "does not include retail price", "does not include UPC", "does not include proof or producer/distillery as structured fields"]
+    },
+    {
+      "id": "pa_lcb_wholesale_spirits_catalog",
+      "name": "Pennsylvania LCB Wholesale Spirits Catalog",
+      "type": "control_state_catalog",
+      "authority": "Pennsylvania Liquor Control Board",
+      "url": "https://www.pa.gov/agencies/lcb/supplier-vendors/wine-and-spirits-suppliers/item-catalogs",
+      "bestFor": ["PLCB item number", "item description", "serious whiskey category", "liquid volume", "case pack", "current regular retail", "promotion fields", "proof", "UPC columns"],
+      "limits": ["Pennsylvania catalog only", "producer/distillery is not separated as a structured field", "barrel-pick variants are represented as separate retail items"]
+    },
+    {
+      "id": "wyoming_liquor_division",
+      "name": "Wyoming Liquor Division Liquor365 Domestic Whiskey Catalog",
+      "type": "control_state_catalog",
+      "authority": "Wyoming Liquor Division",
+      "url": "https://liquor365.wyo.gov/wld/distilled-spirits/whiskey-domestic/5637145409.c",
+      "bestFor": ["item number", "product name", "serious domestic whiskey category", "product URL", "availability label", "case-pack list price", "bottle price estimate derived from case pack"],
+      "limits": ["Wyoming catalog only", "prices are source list prices divided by parsed case pack, not independent shelf observations", "proof, age, and size are parsed from product names when present", "producer/distillery is not separated as a structured field"]
+    },
+    {
+      "id": "maine_spirits_master_price_list",
+      "name": "Maine Spirits Master Price List",
+      "type": "control_state_catalog",
+      "authority": "Maine Spirits / Bureau of Alcoholic Beverages and Lottery Operations",
+      "url": "https://www.mainespirits.com/maine-spirits-agent-portal",
+      "bestFor": ["item number", "product name", "serious whiskey category", "size", "units", "proof", "product category", "UPC", "agency cost", "retail price", "sale price", "effective dates"],
+      "limits": ["Maine catalog only", "producer/distillery is not separated as a structured field", "availability is agent-store dependent"]
+    },
+    {
+      "id": "montgomery_county_abs_price_book",
+      "name": "Montgomery County ABS Price Book",
+      "type": "county_control_price_book",
+      "authority": "Montgomery County Alcohol Beverage Services",
+      "url": "https://www.montgomerycountymd.gov/ABS/Resources/Files/suppliers/pricebook/pricebook.pdf",
+      "bestFor": ["product code", "product name", "size", "tag/status", "bottles per case", "wholesale case price", "wholesale bottle price", "supplier", "effective period"],
+      "limits": ["Montgomery County Maryland price book only", "prices are wholesale bottle prices, not consumer shelf retail", "PDF text extraction includes page-break artifacts that require conservative filtering", "does not include UPC or proof as separate structured fields"]
+    },
+    {
+      "id": "montgomery_county_abs_inventory",
+      "name": "Montgomery County ABS Store Inventory and Sale Items",
+      "type": "county_control_inventory",
+      "authority": "Montgomery County Alcohol Beverage Services / Open Montgomery",
+      "url": "https://data.montgomerycountymd.gov/Community-Recreation/ABS-Store-Inventory-and-Sale-Items/ib5t-5ncy",
+      "bestFor": ["product code", "serious whiskey category", "product category", "product description", "size", "total inventory", "regular retail price", "sale price", "sale end date"],
+      "limits": ["Montgomery County Maryland ABS inventory only", "total inventory is aggregate county inventory, not bottle count by store in this export", "descriptions may be abbreviated", "does not include UPC or producer/distillery fields"]
+    },
+    {
+      "id": "vermont_802_spirits_price_list",
+      "name": "Vermont 802Spirits Complete Price List",
+      "type": "control_state_catalog",
+      "authority": "Vermont Department of Liquor and Lottery / 802Spirits",
+      "url": "https://www.802spirits.com/monthly-sales",
+      "bestFor": ["product code", "brand name", "serious whiskey category", "size", "regular retail price", "sale price", "savings", "proof", "status", "monthly price-list period"],
+      "limits": ["Vermont catalog only", "PDF text extraction requires block parsing", "producer/distillery is not separated as a structured field", "does not include UPC"]
+    },
+    {
+      "id": "tabc_product_registration",
+      "name": "Texas TABC Approved Product Label Search",
+      "type": "state_product_registration",
+      "authority": "Texas Alcoholic Beverage Commission",
+      "url": "https://www.tabc.texas.gov/public-information/approved-labels-search/",
+      "bestFor": ["registered bourbon, rye, Tennessee, American single malt, Canadian, Scotch, Irish, Japanese, and world whisky lookup", "certificate PDF links", "TTB COLA cross-reference", "ABV/proof", "permit/license number", "trade name", "approval date"],
+      "limits": ["state registration only", "not retail price", "not availability", "Texas Open Data approved-label dataset covers product labels approved before Sept. 1, 2021; newer product registrations are searched through AIMS"]
+    },
+    {
+      "id": "kentucky_abc_active_brands",
+      "name": "Kentucky ABC Active Brands",
+      "type": "state_product_registration",
+      "authority": "Kentucky Department of Alcoholic Beverage Control",
+      "url": "https://ky.productregistrationonline.com/brands",
+      "bestFor": ["active bourbon, rye, Tennessee, American single malt, Canadian, and world whisky registration lookup", "TTB COLA cross-reference", "ABV/proof", "package size when available", "supplier/licensee", "Kentucky approval number", "distributor permit/name", "approval date"],
+      "limits": ["state registration only", "not retail price", "not consumer availability", "export rows include distributor-level duplication", "some registrations report case-volume package sizes or omit ABV/size"]
+    },
+    {
+      "id": "connecticut_liquor_brands",
+      "name": "Connecticut Liquor Brands",
+      "type": "state_product_registration",
+      "authority": "Connecticut Department of Consumer Protection",
+      "url": "https://catalog.data.gov/dataset/liquor-brands",
+      "bestFor": ["active brand registration lookup", "brand name", "Connecticut registration number", "effective date", "expiration date", "shipper/supplier", "wholesaler credential"],
+      "limits": ["state registration only", "not retail price", "not bottle size", "not proof except when parsed from brand name", "text searches include wine/beer/cocktail false positives that require conservative filtering"]
+    },
+    {
+      "id": "lcbo_whisky_catalog",
+      "name": "LCBO Whisky Catalog",
+      "type": "provincial_control_catalog",
+      "authority": "Liquor Control Board of Ontario",
+      "url": "https://www.lcbo.com/en/products/spirits/whisky",
+      "bestFor": ["Ontario whisky product identity", "SKU", "brand name", "category path", "country and region", "ABV/proof", "size", "UPC", "LCBO CAD price metadata", "online inventory flags", "product URL"],
+      "limits": ["Ontario catalog only", "CAD prices are not U.S. retail observations", "availability is LCBO-channel specific", "category buckets can be broad and require conservative filtering"]
+    },
+    {
+      "id": "manual_user_observation",
+      "name": "User Observation",
+      "type": "first_party_user_data",
+      "authority": "Barrel Proof user",
+      "url": "",
+      "bestFor": ["shelf price", "store sighting", "batch detail", "private tasting notes"],
+      "limits": ["must be marked as user-contributed", "needs duplicate detection"]
+    }
+  ]
+}

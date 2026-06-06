@@ -1,0 +1,17 @@
+{
+  "name": "Barrel Proof",
+  "short_name": "Barrel Proof",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "description": "A premium bourbon decision companion: connoisseur-grade recommendations, a tap-don't-type collection builder, blind-tasting Showdown, and distillery analytics.",
+  "background_color": "#120d0b",
+  "theme_color": "#120d0b",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

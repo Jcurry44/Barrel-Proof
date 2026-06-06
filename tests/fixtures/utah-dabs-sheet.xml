@@ -1,0 +1,69 @@
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t></t></is></c></row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>CSC</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>Description</t></is></c>
+      <c r="C2" t="inlineStr"><is><t>Div</t></is></c>
+      <c r="D2" t="inlineStr"><is><t>Dept</t></is></c>
+      <c r="E2" t="inlineStr"><is><t>Class</t></is></c>
+      <c r="F2" t="inlineStr"><is><t>Size</t></is></c>
+      <c r="G2" t="inlineStr"><is><t>Retail Price</t></is></c>
+      <c r="H2" t="inlineStr"><is><t>Item Status</t></is></c>
+      <c r="I2" t="inlineStr"><is><t>On Spa</t></is></c>
+      <c r="J2" t="inlineStr"><is><t>Vendor Name</t></is></c>
+      <c r="K2" t="inlineStr"><is><t>Vendor Cd</t></is></c>
+      <c r="L2" t="inlineStr"><is><t>Div Name</t></is></c>
+      <c r="M2" t="inlineStr"><is><t>Dept Name</t></is></c>
+      <c r="N2" t="inlineStr"><is><t>Class name</t></is></c>
+    </row>
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>016096</t></is></c>
+      <c r="B3" t="inlineStr"><is><t>EVAN WILLIAMS BIB WHITE LABEL      750ml</t></is></c>
+      <c r="C3" t="inlineStr"><is><t>A</t></is></c>
+      <c r="D3" t="inlineStr"><is><t>AW</t></is></c>
+      <c r="E3" t="inlineStr"><is><t>AWH</t></is></c>
+      <c r="F3" t="inlineStr"><is><t>750</t></is></c>
+      <c r="G3"><v>19.99</v></c>
+      <c r="H3" t="inlineStr"><is><t>1</t></is></c>
+      <c r="I3" t="inlineStr"><is><t>Yes</t></is></c>
+      <c r="J3" t="inlineStr"><is><t>HEAVEN HILL SALES CO. (000444)</t></is></c>
+      <c r="K3" t="inlineStr"><is><t>000444</t></is></c>
+      <c r="L3" t="inlineStr"><is><t>SPIRITS</t></is></c>
+      <c r="M3" t="inlineStr"><is><t>WHISKEY</t></is></c>
+      <c r="N3" t="inlineStr"><is><t>WHISKEY - BOURBON &amp; TENNESSEE</t></is></c>
+    </row>
+    <row r="4">
+      <c r="A4" t="inlineStr"><is><t>123456</t></is></c>
+      <c r="B4" t="inlineStr"><is><t>EXAMPLE VODKA 750ml</t></is></c>
+      <c r="C4" t="inlineStr"><is><t>A</t></is></c>
+      <c r="D4" t="inlineStr"><is><t>AD</t></is></c>
+      <c r="E4" t="inlineStr"><is><t>ADF</t></is></c>
+      <c r="F4" t="inlineStr"><is><t>750</t></is></c>
+      <c r="G4"><v>14.99</v></c>
+      <c r="H4" t="inlineStr"><is><t>1</t></is></c>
+      <c r="I4" t="inlineStr"><is><t>No</t></is></c>
+      <c r="J4" t="inlineStr"><is><t>EXAMPLE VENDOR (000000)</t></is></c>
+      <c r="K4" t="inlineStr"><is><t>000000</t></is></c>
+      <c r="L4" t="inlineStr"><is><t>SPIRITS</t></is></c>
+      <c r="M4" t="inlineStr"><is><t>VODKA</t></is></c>
+      <c r="N4" t="inlineStr"><is><t>VODKA</t></is></c>
+    </row>
+    <row r="5">
+      <c r="A5" t="inlineStr"><is><t>654321</t></is></c>
+      <c r="B5" t="inlineStr"><is><t>1000 STORIES ZINFANDEL BOURBON BAR 750ml</t></is></c>
+      <c r="C5" t="inlineStr"><is><t>W</t></is></c>
+      <c r="D5" t="inlineStr"><is><t>WW</t></is></c>
+      <c r="E5" t="inlineStr"><is><t>WZR</t></is></c>
+      <c r="F5" t="inlineStr"><is><t>750</t></is></c>
+      <c r="G5"><v>17.99</v></c>
+      <c r="H5" t="inlineStr"><is><t>1</t></is></c>
+      <c r="I5" t="inlineStr"><is><t>No</t></is></c>
+      <c r="J5" t="inlineStr"><is><t>EXAMPLE WINE VENDOR (000001)</t></is></c>
+      <c r="K5" t="inlineStr"><is><t>000001</t></is></c>
+      <c r="L5" t="inlineStr"><is><t>WINE</t></is></c>
+      <c r="M5" t="inlineStr"><is><t>RED WINE</t></is></c>
+      <c r="N5" t="inlineStr"><is><t>ZINFANDEL</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>
