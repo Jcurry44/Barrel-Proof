@@ -90,6 +90,30 @@
       batches: ["OBSV", "OBSK", "OBSF", "OBSO", "OBSQ", "OESV", "OESK", "OESF", "OESO", "OESQ"]
     },
     {
+      // The release year sits between "Four Roses" and "Limited Edition" in catalog
+      // names, so use matchAll (both tokens present) rather than a contiguous phrase.
+      matchAll: ["four roses", "limited edition"],
+      match: ["four roses le small batch", "ltd edition small batch", "anniversary small batch"],
+      label: "Four Roses Limited Edition Small Batch",
+      howToId: "The release year is on the front label; anniversary years are named (2013 = 125th, 2018 = 130th, 2023 = 135th). Each bottle is hand-numbered with its recipe blend on the back.",
+      batches: [
+        { label: "2012", year: 2012, proof: 103.4 },
+        { label: "2013 · 125th", year: 2013, proof: 103.2 },
+        { label: "2014", year: 2014, proof: 111.8 },
+        { label: "2015", year: 2015, proof: 108.6 },
+        { label: "2016", year: 2016, proof: 111.2 },
+        { label: "2017", year: 2017, proof: 108.0 },
+        { label: "2018 · 130th", year: 2018, proof: 108.3 },
+        { label: "2019", year: 2019, proof: 112.6 },
+        { label: "2020", year: 2020, proof: 111.4 },
+        { label: "2021", year: 2021, proof: 114.2 },
+        { label: "2022", year: 2022, proof: 109.0 },
+        { label: "2023 · 135th", year: 2023, proof: 108.0 },
+        { label: "2024", year: 2024, proof: 108.2 },
+        { label: "2025", year: 2025, proof: 109.0 }
+      ]
+    },
+    {
       match: ["booker s", "bookers"],
       label: "Booker's",
       howToId: "The batch code (e.g. 2024-01) and its name are on the front label, with the exact proof and the age statement (years-months-days) just below.",
@@ -230,10 +254,75 @@
       howToId: "Every bottle is a unique single barrel — no batch number. Read the hand-written label: dump date (first line, M-D-YY), Barrel No., Warehouse (always H), Rick No., Bottle No., and the exact barrel proof (~125–140). Log the dump date + barrel # + proof to make yours unique."
     },
     {
+      match: ["van winkle", "pappy"],
+      label: "Van Winkle (Pappy / Old Rip)",
+      howToId: "No vintage year on the front, and each expression's proof is fixed (above). For the release year, read the laser code on the glass (back, below the label) — the 2-digit year segment is the bottling year (≈ the release). Pre-2007 bottles: date by glass tint and 'Lawrenceburg' vs 'Frankfort' on the label.",
+      batches: [
+        { label: "Old Rip Van Winkle 10 Year", proof: 107 },
+        { label: "Special Reserve 'Lot B' 12 Year", proof: 90.4 },
+        { label: "Pappy Van Winkle 15 Year", proof: 107 },
+        { label: "Pappy Van Winkle 20 Year", proof: 90.4 },
+        { label: "Pappy Van Winkle 23 Year", proof: 95.6 },
+        { label: "Family Reserve Rye 13 Year", proof: 95.6 }
+      ]
+    },
+    {
+      match: ["old fitzgerald"],
+      label: "Old Fitzgerald Bottled-in-Bond",
+      howToId: "Every release is 100 proof (bottled-in-bond) — the AGE on the front (e.g. 19 Year) is the differentiator, confirmed by the back label's distilled/bottled seasons. Label color: Spring = green, Fall = black.",
+      batches: [
+        { label: "Spring 2018 · 11 yr", year: 2018, proof: 100 }, { label: "Fall 2018 · 9 yr", year: 2018, proof: 100 },
+        { label: "Spring 2019 · 13 yr", year: 2019, proof: 100 }, { label: "Fall 2019 · 15 yr", year: 2019, proof: 100 },
+        { label: "Spring 2020 · 9 yr", year: 2020, proof: 100 }, { label: "Fall 2020 · 14 yr", year: 2020, proof: 100 },
+        { label: "Spring 2021 · 8 yr", year: 2021, proof: 100 }, { label: "Fall 2021 · 11 yr", year: 2021, proof: 100 },
+        { label: "Spring 2022 · 17 yr", year: 2022, proof: 100 }, { label: "Fall 2022 · 19 yr", year: 2022, proof: 100 },
+        { label: "Spring 2023 · 10 yr", year: 2023, proof: 100 }, { label: "Fall 2023 · 8 yr", year: 2023, proof: 100 },
+        { label: "Spring 2024 · 10 yr", year: 2024, proof: 100 }, { label: "Fall 2024 · 11 yr", year: 2024, proof: 100 },
+        { label: "Spring 2025 · 9 yr", year: 2025, proof: 100 }, { label: "Fall 2025 · 11 yr", year: 2025, proof: 100 }
+      ]
+    },
+    {
+      matchRe: /michter.*?\b20\s*(?:yr|year)/,
+      label: "Michter's 20 Year",
+      howToId: "Each release is a hand-selected small batch proofed to a constant 114.2 — so the vintage/batch code on the label (e.g. 19H1440), not the proof, identifies the release.",
+      batches: [
+        { label: "2016", year: 2016, proof: 114.2 }, { label: "2018", year: 2018, proof: 114.2 },
+        { label: "2019", year: 2019, proof: 114.2 }, { label: "2021", year: 2021, proof: 114.2 },
+        { label: "2022", year: 2022, proof: 114.2 }, { label: "2024", year: 2024, proof: 114.2 }
+      ]
+    },
+    {
+      matchRe: /michter.*?\b25\s*(?:yr|year)/,
+      label: "Michter's 25 Year",
+      howToId: "Proofed to a constant 116.2 each release; the vintage/batch code on the label identifies which year.",
+      batches: [
+        { label: "2017", year: 2017, proof: 116.2 }, { label: "2020", year: 2020, proof: 116.2 },
+        { label: "2023", year: 2023, proof: 116.2 }
+      ]
+    },
+    {
+      matchRe: /michter.*?\b10\s*(?:yr|year)/,
+      label: "Michter's 10 Year",
+      perBarrel: true,
+      howToId: "Single barrel — each bottling is one barrel, identified by the barrel/batch code on the back label. Bottled at a fixed 94.4 proof (Bourbon) or 92.8 proof (Rye)."
+    },
+    {
       match: ["old forester birthday", "birthday bourbon"],
       label: "Old Forester Birthday Bourbon",
-      howToId: "The release year is printed on the front label.",
-      batches: ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+      howToId: "Vintage-dated — the release year is on the front label. Age and proof change every year (shown above).",
+      batches: [
+        { label: "2005 · 12 yr", year: 2005, proof: 96 }, { label: "2006 · 13 yr", year: 2006, proof: 96 },
+        { label: "2007 · 12 yr", year: 2007, proof: 94 }, { label: "2008 · 12 yr", year: 2008, proof: 94 },
+        { label: "2009 · 12 yr", year: 2009, proof: 97 }, { label: "2010 · 12 yr", year: 2010, proof: 95 },
+        { label: "2011 · 12 yr", year: 2011, proof: 98 }, { label: "2012 · 12 yr", year: 2012, proof: 97 },
+        { label: "2013 · 12 yr", year: 2013, proof: 98 }, { label: "2014 · 12 yr", year: 2014, proof: 97 },
+        { label: "2015 · 12 yr", year: 2015, proof: 100 }, { label: "2016 · 12 yr", year: 2016, proof: 97 },
+        { label: "2017 · 12 yr", year: 2017, proof: 96 }, { label: "2018 · 12 yr", year: 2018, proof: 101 },
+        { label: "2019 · 11 yr", year: 2019, proof: 105 }, { label: "2020 · 10 yr", year: 2020, proof: 98 },
+        { label: "2021 · 12 yr", year: 2021, proof: 104 }, { label: "2022 · 11 yr", year: 2022, proof: 96 },
+        { label: "2023 · 12 yr", year: 2023, proof: 96 }, { label: "2024 · 12 yr", year: 2024, proof: 107 },
+        { label: "2025 · 12 yr", year: 2025, proof: 92 }
+      ]
     },
     {
       match: ["parker s heritage", "parkers heritage"],
@@ -249,10 +338,14 @@
 
   // Which curated batch line (if any) a bottle belongs to.
   function batchLineFor(bottle) {
+    const raw = String(bottle && bottle.name || "").toLowerCase();
     const hay = norm(bottle && bottle.name);
+    const has = (m) => hay.indexOf(norm(m).trim()) !== -1;
     for (const line of BATCH_LINES) {
-      if (line.exclude && line.exclude.some((m) => hay.indexOf(norm(m).trim()) !== -1)) continue;
-      if (line.match.some((m) => hay.indexOf(norm(m).trim()) !== -1)) return line;
+      if (line.exclude && line.exclude.some(has)) continue;
+      if (line.matchRe && line.matchRe.test(raw)) return line;
+      if (line.matchAll && line.matchAll.length && line.matchAll.every(has)) return line;
+      if (line.match && line.match.some(has)) return line;
     }
     return null;
   }
