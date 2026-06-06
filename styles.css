@@ -1908,8 +1908,9 @@ h3 {
 }
 
 .cocktail-card.active {
-  border-color: rgba(240, 201, 120, 0.68);
-  background: rgba(210, 168, 91, 0.13);
+  border-color: var(--brass-strong);
+  background: rgba(210, 168, 91, 0.18);
+  box-shadow: 0 0 0 1px rgba(241, 205, 132, 0.5), 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
 .cocktail-card strong {
@@ -1940,6 +1941,7 @@ h3 {
 .cocktail-spec {
   position: sticky;
   top: 14px;
+  scroll-margin-top: 14px;
   display: grid;
   gap: 14px;
   border: 1px solid var(--line);

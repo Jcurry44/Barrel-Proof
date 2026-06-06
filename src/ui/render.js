@@ -243,6 +243,7 @@
       if (target.dataset.cocktailId) {
         ctx.ui.activeCocktailId = target.dataset.cocktailId;
         render(ctx);
+        revealCocktailSpec(ctx);
         return;
       }
 
@@ -336,6 +337,7 @@
         if (match) ctx.ui.activeCocktailId = match.cocktail.id;
         ctx.ui.tab = "cocktails";
         render(ctx);
+        revealCocktailSpec(ctx);
         return;
       }
 
@@ -562,6 +564,19 @@
       ctx.ui.renderTimer = null;
       render(ctx);
     }, delay);
+  }
+
+  // On phones the cocktail spec stacks below the card list, so a tap updated
+  // something off-screen. Scroll the spec into view — but only when it's actually
+  // below the fold, so the desktop side-by-side layout is left alone.
+  function revealCocktailSpec(ctx) {
+    const spec = ctx.mount && ctx.mount.querySelector ? ctx.mount.querySelector(".cocktail-spec") : null;
+    if (!spec || !spec.getBoundingClientRect || !spec.scrollIntoView) return;
+    const vh = global.innerHeight ||
+      (global.document && global.document.documentElement && global.document.documentElement.clientHeight) || 0;
+    if (spec.getBoundingClientRect().top > vh * 0.4) {
+      spec.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function persist(ctx) {
