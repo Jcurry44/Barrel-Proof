@@ -2576,6 +2576,21 @@
     const batchCount = entry && entry.batches ? entry.batches.length : 0;
     if (g.type === "batched" && g.line) {
       const expanded = ctx.ui.wizExpanded === b.id;
+      const howTo = g.line.howToId ? `<p class="wiz-howto"><b>How to tell which one:</b> ${escapeHtml(g.line.howToId)}</p>` : "";
+      // Per-barrel lines (e.g. Blanton's SFTB) have no fixed batches — every bottle
+      // is unique, so log a count and read each bottle's details off the label.
+      if (g.line.perBarrel) {
+        return `
+          <div class="wiz-line wiz-batched${owned ? " owned" : ""}${expanded ? " open" : ""}">
+            <button class="wiz-line-head" type="button" data-wiz="expand" data-bottle="${escapeAttr(b.id)}">
+              ${bottleVisual(b)}
+              <span class="wiz-line-main"><strong>${escapeHtml(g.line.label)}</strong><small>${owned ? owned + " owned · each bottle unique" : "tap — every bottle is a unique single barrel"}</small></span>
+              <span class="wiz-chev">${expanded ? "&#9662;" : "&#9656;"}</span>
+            </button>
+            ${expanded ? `<div class="wiz-batch-detail">${howTo}<div class="wiz-perbarrel"><span>How many do you own?</span><span class="wiz-stepper"><button class="step-btn" type="button" data-wiz="count" data-bottle="${escapeAttr(b.id)}" data-delta="-1">&minus;</button><b>${owned}</b><button class="step-btn" type="button" data-wiz="count" data-bottle="${escapeAttr(b.id)}" data-delta="1">+</button></span></div></div>` : ""}
+          </div>
+        `;
+      }
       return `
         <div class="wiz-line wiz-batched${batchCount ? " owned" : ""}${expanded ? " open" : ""}">
           <button class="wiz-line-head" type="button" data-wiz="expand" data-bottle="${escapeAttr(b.id)}">
@@ -2583,7 +2598,7 @@
             <span class="wiz-line-main"><strong>${escapeHtml(g.line.label)}</strong><small>${batchCount ? batchCount + " batch" + (batchCount === 1 ? "" : "es") + " owned" : "tap to pick your batches"}</small></span>
             <span class="wiz-chev">${expanded ? "&#9662;" : "&#9656;"}</span>
           </button>
-          ${expanded ? `<div class="wiz-batches">${g.line.batches.map((bt) => {
+          ${expanded ? `<div class="wiz-batch-detail">${howTo}<div class="wiz-batches">${g.line.batches.map((bt) => {
             const C2 = global.BarrelCollection;
             const label = C2.batchLabel(bt);
             const proof = C2.batchProof(bt);
@@ -2591,7 +2606,7 @@
             const on = entry && entry.batches && entry.batches.includes(label);
             const title = [year, Number.isFinite(proof) ? proof + " proof" : ""].filter(Boolean).join(" · ");
             return `<button class="batch-chip${on ? " on" : ""}" type="button" data-wiz="batch" data-bottle="${escapeAttr(b.id)}" data-batch="${escapeAttr(label)}"${title ? ` title="${escapeAttr(title)}"` : ""}>${escapeHtml(label)}${Number.isFinite(proof) ? ` <i>${proof}</i>` : ""}</button>`;
-          }).join("")}</div>` : ""}
+          }).join("")}</div></div>` : ""}
         </div>
       `;
     }

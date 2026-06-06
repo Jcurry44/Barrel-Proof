@@ -11,28 +11,40 @@
   // statuses[bottleId] = "owned" is kept in sync so the shelf and recommender
   // (which read statuses) just work.
 
-  function range(letterMonths, years) {
-    const out = [];
-    for (const y of years) for (const lm of letterMonths) out.push(lm + String(y).slice(-2));
-    return out;
-  }
+  // How to read Buffalo Trace's laser bottling-date code (shared by BTAC, EHT, etc.).
+  const BT_LASER_CODE = "Buffalo Trace laser-etches a date code low on the glass (often on the back below the label — shine a light through to read it). Modern format e.g. “L 18 096 01 1050 K”: L = lot, 18 = year bottled (2018), 096 = day of year (≈96th day, early Apr), then plant / time / line. 2007–11 bottles read “K 259 10 15:47” = day 259, year 2010. The 2-digit year is your bottling year.";
 
-  // Elijah Craig / Larceny BP use [release][month][year]: A=Jan(1), B=May(5), C=Sep(9).
-  const ABC = ["A1", "B5", "C9"];
-  const ECBP_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
-
+  // Real batch data — proofs/years researched from community batch guides
+  // (Breaking Bourbon, bourbinsane, et al.), since producers publish no master
+  // list. Proofs can vary ~0.1 between sources. A batch is a string or
+  // { label, proof, year }. `howToId` tells the user how to identify their bottle.
   const BATCH_LINES = [
     {
-      // "Elijah Craig Barrel ___" is always Barrel Proof — match the stem so
-      // OCR variants ("Barrel PR", "Barrel Program") still collapse to one line.
       match: ["elijah craig barrel", "elijah craig bp", "elijah craig b p"],
       label: "Elijah Craig Barrel Proof",
-      batches: range(ABC, ECBP_YEARS).concat(["Batch 1–17 (older)"])
+      howToId: "Read the batch code on the front label: letter = release of the year (A = Jan, B = May, C = Sept), then the month, then the year — e.g. C923 = 3rd release, Sept 2023. The proof is on the label too.",
+      batches: [
+        { label: "A120", year: 2020, proof: 136.6 }, { label: "B520", year: 2020, proof: 127.2 }, { label: "C920", year: 2020, proof: 132.8 },
+        { label: "A121", year: 2021, proof: 123.6 }, { label: "B521", year: 2021, proof: 118.2 }, { label: "C921", year: 2021, proof: 120.2 },
+        { label: "A122", year: 2022, proof: 120.8 }, { label: "B522", year: 2022, proof: 121.0 }, { label: "C922", year: 2022, proof: 124.8 },
+        { label: "A123", year: 2023, proof: 125.6 }, { label: "B523", year: 2023, proof: 124.2 }, { label: "C923", year: 2023, proof: 125.2 },
+        { label: "A124", year: 2024, proof: 119.0 }, { label: "B524", year: 2024, proof: 130.6 }, { label: "C924", year: 2024, proof: 129.0 },
+        { label: "A125", year: 2025, proof: 118.2 }, { label: "B525", year: 2025, proof: 126.2 }, { label: "C925", year: 2025, proof: 129.0 },
+        { label: "Batch 1–17 (pre-2020)" }
+      ]
     },
     {
       match: ["larceny barrel", "larceny bp", "larceny b p"],
       label: "Larceny Barrel Proof",
-      batches: range(ABC, [2020, 2021, 2022, 2023, 2024, 2025])
+      howToId: "Same code as ECBP on the front label: letter = release of the year (A = Jan, B = May, C = Sept), then month, then year — e.g. A120 = 1st release, Jan 2020.",
+      batches: [
+        { label: "A120", year: 2020, proof: 123.2 }, { label: "B520", year: 2020, proof: 122.2 }, { label: "C920", year: 2020, proof: 122.4 },
+        { label: "A121", year: 2021, proof: 114.8 }, { label: "B521", year: 2021, proof: 121.0 }, { label: "C921", year: 2021, proof: 122.6 },
+        { label: "A122", year: 2022, proof: 124.4 }, { label: "B522", year: 2022, proof: 123.8 }, { label: "C922", year: 2022, proof: 126.6 },
+        { label: "A123", year: 2023, proof: 125.8 }, { label: "B523", year: 2023, proof: 124.4 }, { label: "C923", year: 2023, proof: 126.4 },
+        { label: "A124", year: 2024, proof: 124.2 }, { label: "B524", year: 2024, proof: 125.4 }, { label: "C924", year: 2024, proof: 125.1 },
+        { label: "A125", year: 2025, proof: 125.0 }, { label: "B525", year: 2025, proof: 117.4 }, { label: "C925", year: 2025, proof: 119.6 }
+      ]
     },
     {
       // Matches "Stagg Jr" and the post-2022 rebrand to plain "Stagg", but NOT the
@@ -40,9 +52,7 @@
       match: ["stagg jr", "stagg junior", "stagg"],
       exclude: ["george t stagg", "george t. stagg", "gts"],
       label: "Stagg (Jr.)",
-      // Real batches with bottling proof + release year. Source: community batch
-      // guides (Buffalo Trace doesn't publish a master list); proofs are widely
-      // cross-referenced and may vary ±0.1 between sources.
+      howToId: "Older bottles read “Stagg Jr.” (Batches 1–17); from 2022 it's just “Stagg” with a year code (e.g. 23A). Match the label proof to the batch above.",
       batches: [
         { label: "Batch 1", year: 2013, proof: 134.4 },
         { label: "Batch 2", year: 2014, proof: 128.7 },
@@ -76,42 +86,159 @@
     {
       match: ["four roses single barrel", "four roses private", "four roses store pick", "four roses obsv", "four roses recipe"],
       label: "Four Roses (recipe)",
+      howToId: "The 4-letter recipe code (e.g. OBSV) is the key: 2nd letter = mashbill (B = 35% rye, E = 20% rye), 4th letter = yeast. It's printed on single-barrel / store-pick labels.",
       batches: ["OBSV", "OBSK", "OBSF", "OBSO", "OBSQ", "OESV", "OESK", "OESF", "OESO", "OESQ"]
     },
     {
       match: ["booker s", "bookers"],
       label: "Booker's",
-      batches: ["2020", "2021", "2022", "2023", "2024", "2025"].flatMap((y) => ["01", "02", "03", "04"].map((n) => y + "-" + n))
+      howToId: "The batch code (e.g. 2024-01) and its name are on the front label, with the exact proof and the age statement (years-months-days) just below.",
+      batches: [
+        { label: "2018-01 Kathleen's", year: 2018, proof: 127.4 },
+        { label: "2018-02 Backyard BBQ", year: 2018, proof: 128.8 },
+        { label: "2018-03 Kentucky Chew", year: 2018, proof: 126.7 },
+        { label: "2018-04 Kitchen Table", year: 2018, proof: 128.0 },
+        { label: "2019-01 Teresa's", year: 2019, proof: 125.9 },
+        { label: "2019-02 Shiny Barrel", year: 2019, proof: 124.0 },
+        { label: "2019-03 Country Ham", year: 2019, proof: 124.7 },
+        { label: "2019-04 Beaten Biscuits", year: 2019, proof: 126.1 },
+        { label: "2020-01 Granny's", year: 2020, proof: 126.4 },
+        { label: "2020-02 Boston", year: 2020, proof: 126.5 },
+        { label: "2020-03 Pigskin", year: 2020, proof: 127.3 },
+        { label: "2021-01 Donohoe's", year: 2021, proof: 125.3 },
+        { label: "2021-02 Tagalong", year: 2021, proof: 127.9 },
+        { label: "2021-03 Bardstown", year: 2021, proof: 125.5 },
+        { label: "2021-04 Noe Strangers", year: 2021, proof: 124.4 },
+        { label: "2022-01 Ronnie's", year: 2022, proof: 124.3 },
+        { label: "2022-02 The Lumberyard", year: 2022, proof: 124.8 },
+        { label: "2022-03 Kentucky Tea", year: 2022, proof: 126.5 },
+        { label: "2022-04 Pinkie's", year: 2022, proof: 122.4 },
+        { label: "2023-01 Charlie's", year: 2023, proof: 126.6 },
+        { label: "2023-02 Apprentice", year: 2023, proof: 125.5 },
+        { label: "2023-03 Mighty Fine", year: 2023, proof: 126.6 },
+        { label: "2023-04 The Storyteller", year: 2023, proof: 127.8 },
+        { label: "2024-01 Springfield", year: 2024, proof: 124.5 },
+        { label: "2024-02 The Beam House", year: 2024, proof: 124.6 },
+        { label: "2024-03 Master Distiller's", year: 2024, proof: 130.3 },
+        { label: "2024-04 Jimmy's", year: 2024, proof: 125.8 },
+        { label: "2025-01 Barry's", year: 2025, proof: 125.7 },
+        { label: "2025-02 By The Pond", year: 2025, proof: 125.8 },
+        { label: "2025-03 Jerry's", year: 2025, proof: 124.7 },
+        { label: "2025-04 Phantom Pipes", year: 2025, proof: 126.4 }
+      ]
     },
     {
       match: ["george t stagg", "gts"],
       label: "George T. Stagg",
-      // GTS was not released in 2021 (barrels didn't meet profile).
-      batches: ["2017", "2018", "2019", "2020", "2022", "2023", "2024", "2025"]
+      howToId: "BTAC labels don't print the year on the front — match the unique annual proof above. To confirm, read the laser code on the glass. " + BT_LASER_CODE,
+      // Not released in 2021 (no batch met the profile). 2005 had multiple lots.
+      batches: [
+        { label: "2002", year: 2002, proof: 137.6 }, { label: "2003", year: 2003, proof: 142.7 },
+        { label: "2004", year: 2004, proof: 129.0 }, { label: "2005", year: 2005, proof: 141.2 },
+        { label: "2006", year: 2006, proof: 140.6 }, { label: "2007", year: 2007, proof: 144.8 },
+        { label: "2008", year: 2008, proof: 141.8 }, { label: "2009", year: 2009, proof: 141.4 },
+        { label: "2010", year: 2010, proof: 143.0 }, { label: "2011", year: 2011, proof: 142.6 },
+        { label: "2012", year: 2012, proof: 142.8 }, { label: "2013", year: 2013, proof: 128.2 },
+        { label: "2014", year: 2014, proof: 138.1 }, { label: "2015", year: 2015, proof: 138.2 },
+        { label: "2016", year: 2016, proof: 144.1 }, { label: "2017", year: 2017, proof: 129.2 },
+        { label: "2018", year: 2018, proof: 124.9 }, { label: "2019", year: 2019, proof: 116.9 },
+        { label: "2020", year: 2020, proof: 130.4 }, { label: "2022", year: 2022, proof: 138.7 },
+        { label: "2023", year: 2023, proof: 135.0 }, { label: "2024", year: 2024, proof: 136.1 },
+        { label: "2025", year: 2025, proof: 142.8 }
+      ]
     },
     {
       match: ["william larue weller", "w l w", "wlw"],
       label: "William Larue Weller",
-      batches: ["2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+      howToId: "The year isn't on the front — match the annual proof above, or read the glass laser code. " + BT_LASER_CODE,
+      batches: [
+        { label: "2005", year: 2005, proof: 121.9 }, { label: "2006", year: 2006, proof: 129.9 },
+        { label: "2007", year: 2007, proof: 117.9 }, { label: "2008", year: 2008, proof: 125.3 },
+        { label: "2009", year: 2009, proof: 134.8 }, { label: "2010", year: 2010, proof: 126.6 },
+        { label: "2011", year: 2011, proof: 133.5 }, { label: "2012", year: 2012, proof: 123.4 },
+        { label: "2013", year: 2013, proof: 136.2 }, { label: "2014", year: 2014, proof: 140.2 },
+        { label: "2015", year: 2015, proof: 134.6 }, { label: "2016", year: 2016, proof: 135.4 },
+        { label: "2017", year: 2017, proof: 128.2 }, { label: "2018", year: 2018, proof: 125.7 },
+        { label: "2019", year: 2019, proof: 128.0 }, { label: "2020", year: 2020, proof: 134.5 },
+        { label: "2021", year: 2021, proof: 125.3 }, { label: "2022", year: 2022, proof: 124.7 },
+        { label: "2023", year: 2023, proof: 133.6 }, { label: "2024", year: 2024, proof: 125.8 },
+        { label: "2025", year: 2025, proof: 129.0 }
+      ]
     },
     {
       match: ["thomas h handy", "thomas handy"],
       label: "Thomas H. Handy",
-      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+      howToId: "Handy's proof is fairly steady year to year, so the glass laser code is the surest way to date it. " + BT_LASER_CODE,
+      batches: [
+        { label: "2006", year: 2006, proof: 132.7 }, { label: "2007", year: 2007, proof: 134.8 },
+        { label: "2008", year: 2008, proof: 127.5 }, { label: "2009", year: 2009, proof: 129.0 },
+        { label: "2010", year: 2010, proof: 126.9 }, { label: "2011", year: 2011, proof: 128.6 },
+        { label: "2012", year: 2012, proof: 132.4 }, { label: "2013", year: 2013, proof: 128.4 },
+        { label: "2014", year: 2014, proof: 129.2 }, { label: "2015", year: 2015, proof: 126.9 },
+        { label: "2016", year: 2016, proof: 126.2 }, { label: "2017", year: 2017, proof: 127.2 },
+        { label: "2018", year: 2018, proof: 128.8 }, { label: "2019", year: 2019, proof: 125.7 },
+        { label: "2020", year: 2020, proof: 129.0 }, { label: "2021", year: 2021, proof: 129.5 },
+        { label: "2022", year: 2022, proof: 130.9 }, { label: "2023", year: 2023, proof: 124.9 },
+        { label: "2024", year: 2024, proof: 127.2 }, { label: "2025", year: 2025, proof: 129.8 }
+      ]
     },
     {
       match: ["eagle rare 17"],
       label: "Eagle Rare 17",
-      batches: ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+      howToId: "Proof tells the era only: 90 = 2005–2017, 101 = 2018 on. To pin the exact year, read the glass laser code. " + BT_LASER_CODE,
+      batches: [
+        { label: "2005", year: 2005, proof: 90 }, { label: "2006", year: 2006, proof: 90 },
+        { label: "2007", year: 2007, proof: 90 }, { label: "2008", year: 2008, proof: 90 },
+        { label: "2009", year: 2009, proof: 90 }, { label: "2010", year: 2010, proof: 90 },
+        { label: "2011", year: 2011, proof: 90 }, { label: "2012", year: 2012, proof: 90 },
+        { label: "2013", year: 2013, proof: 90 }, { label: "2014", year: 2014, proof: 90 },
+        { label: "2015", year: 2015, proof: 90 }, { label: "2016", year: 2016, proof: 90 },
+        { label: "2017", year: 2017, proof: 90 }, { label: "2018", year: 2018, proof: 101 },
+        { label: "2019", year: 2019, proof: 101 }, { label: "2020", year: 2020, proof: 101 },
+        { label: "2021", year: 2021, proof: 101 }, { label: "2022", year: 2022, proof: 101 },
+        { label: "2023", year: 2023, proof: 101 }, { label: "2024", year: 2024, proof: 101 },
+        { label: "2025", year: 2025, proof: 101 }
+      ]
+    },
+    {
+      // Bottles are usually named "Colonel E.H. Taylor, Jr. Barrel Proof" — the
+      // "Jr." sits mid-name, so match both with and without it.
+      match: ["taylor barrel proof", "taylor jr barrel proof", "e h taylor barrel proof", "e h taylor jr barrel proof", "eht barrel proof"],
+      label: "E.H. Taylor Barrel Proof",
+      howToId: "Proofs repeat across years, so decode the bottling date from the glass. " + BT_LASER_CODE + " EHT Barrel Proof is bottled once a year, so the code's year = your batch.",
+      batches: [
+        { label: "Batch 1", year: 2012, proof: 134.5 },
+        { label: "Batch 2", year: 2013, proof: 135.4 },
+        { label: "Batch 3", year: 2014, proof: 129.0 },
+        { label: "Batch 4", year: 2015, proof: 127.2 },
+        { label: "Batch 5", year: 2016, proof: 127.5 },
+        { label: "Batch 6", year: 2017, proof: 128.1 },
+        { label: "Batch 7", year: 2018, proof: 129.7 },
+        { label: "Batch 8", year: 2019, proof: 129.3 },
+        { label: "Batch 9", year: 2020, proof: 130.3 },
+        { label: "Batch 10", year: 2021, proof: 127.3 },
+        { label: "Batch 11", year: 2022, proof: 129.0 },
+        { label: "Batch 12", year: 2023, proof: 131.1 },
+        { label: "Batch 13", year: 2024, proof: 127.3 },
+        { label: "Batch 14", year: 2025, proof: 127.3 }
+      ]
+    },
+    {
+      match: ["straight from the barrel"],
+      label: "Blanton's Straight From The Barrel",
+      perBarrel: true,
+      howToId: "Every bottle is a unique single barrel — no batch number. Read the hand-written label: dump date (first line, M-D-YY), Barrel No., Warehouse (always H), Rick No., Bottle No., and the exact barrel proof (~125–140). Log the dump date + barrel # + proof to make yours unique."
     },
     {
       match: ["old forester birthday", "birthday bourbon"],
       label: "Old Forester Birthday Bourbon",
+      howToId: "The release year is printed on the front label.",
       batches: ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
     },
     {
       match: ["parker s heritage", "parkers heritage"],
       label: "Parker's Heritage Collection",
+      howToId: "The edition number and theme are on the front label; each annual edition is a different whiskey.",
       batches: Array.from({ length: 18 }, (_, i) => "Edition " + (i + 1))
     }
   ];
