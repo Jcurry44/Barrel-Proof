@@ -35,9 +35,43 @@
       batches: range(ABC, [2020, 2021, 2022, 2023, 2024, 2025])
     },
     {
-      match: ["stagg jr", "stagg junior"],
-      label: "Stagg Jr",
-      batches: Array.from({ length: 23 }, (_, i) => "Batch " + (i + 1))
+      // Matches "Stagg Jr" and the post-2022 rebrand to plain "Stagg", but NOT the
+      // allocated "George T. Stagg" (handled by its own line below).
+      match: ["stagg jr", "stagg junior", "stagg"],
+      exclude: ["george t stagg", "george t. stagg", "gts"],
+      label: "Stagg (Jr.)",
+      // Real batches with bottling proof + release year. Source: community batch
+      // guides (Buffalo Trace doesn't publish a master list); proofs are widely
+      // cross-referenced and may vary ±0.1 between sources.
+      batches: [
+        { label: "Batch 1", year: 2013, proof: 134.4 },
+        { label: "Batch 2", year: 2014, proof: 128.7 },
+        { label: "Batch 3", year: 2014, proof: 132.1 },
+        { label: "Batch 4", year: 2015, proof: 132.2 },
+        { label: "Batch 5", year: 2015, proof: 129.7 },
+        { label: "Batch 6", year: 2016, proof: 132.5 },
+        { label: "Batch 7", year: 2016, proof: 130.0 },
+        { label: "Batch 8", year: 2017, proof: 129.5 },
+        { label: "Batch 9", year: 2017, proof: 131.9 },
+        { label: "Batch 10", year: 2018, proof: 126.4 },
+        { label: "Batch 11", year: 2018, proof: 127.9 },
+        { label: "Batch 12", year: 2019, proof: 132.3 },
+        { label: "Batch 13", year: 2019, proof: 128.4 },
+        { label: "Batch 14", year: 2020, proof: 130.2 },
+        { label: "Batch 15", year: 2020, proof: 131.1 },
+        { label: "Batch 16", year: 2021, proof: 130.9 },
+        { label: "Batch 17", year: 2021, proof: 128.7 },
+        { label: "Batch 18", year: 2022, proof: 131.0 },
+        { label: "Batch 19", year: 2022, proof: 130.0 },
+        { label: "Batch 20", year: 2023, proof: 132.2 },
+        { label: "Batch 21", year: 2023, proof: 130.2 },
+        { label: "Batch 22", year: 2023, proof: 127.8 },
+        { label: "Batch 23", year: 2023, proof: 125.9 },
+        { label: "Batch 24", year: 2024, proof: 127.6 },
+        { label: "Batch 25", year: 2024, proof: 127.8 },
+        { label: "Batch 26", year: 2024, proof: 128.9 },
+        { label: "Batch 27", year: 2025, proof: 126.5 }
+      ]
     },
     {
       match: ["four roses single barrel", "four roses private", "four roses store pick", "four roses obsv", "four roses recipe"],
@@ -90,9 +124,21 @@
   function batchLineFor(bottle) {
     const hay = norm(bottle && bottle.name);
     for (const line of BATCH_LINES) {
+      if (line.exclude && line.exclude.some((m) => hay.indexOf(norm(m).trim()) !== -1)) continue;
       if (line.match.some((m) => hay.indexOf(norm(m).trim()) !== -1)) return line;
     }
     return null;
+  }
+
+  // A batch entry is either a plain string ("2024") or { label, proof, year }.
+  function batchLabel(batch) {
+    return batch && typeof batch === "object" ? batch.label : batch;
+  }
+  function batchProof(batch) {
+    return batch && typeof batch === "object" && Number.isFinite(batch.proof) ? batch.proof : null;
+  }
+  function batchYear(batch) {
+    return batch && typeof batch === "object" && batch.year ? batch.year : null;
   }
 
   // A normalized "line" key so the catalog's many spellings of one release
@@ -219,6 +265,9 @@
   global.BarrelCollection = {
     BATCH_LINES,
     batchLineFor,
+    batchLabel,
+    batchProof,
+    batchYear,
     lineKey,
     isOpenPick,
     lineType,

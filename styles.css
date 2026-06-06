@@ -3798,6 +3798,15 @@ button.wiz-line:hover {
   color: #cfe4c5;
 }
 
+.batch-chip i {
+  margin-left: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--line-strong);
+  color: var(--brass-strong);
+  font-style: normal;
+  font-weight: 800;
+}
+
 .wiz-stepper {
   display: flex;
   align-items: center;

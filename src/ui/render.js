@@ -2583,7 +2583,15 @@
             <span class="wiz-line-main"><strong>${escapeHtml(g.line.label)}</strong><small>${batchCount ? batchCount + " batch" + (batchCount === 1 ? "" : "es") + " owned" : "tap to pick your batches"}</small></span>
             <span class="wiz-chev">${expanded ? "&#9662;" : "&#9656;"}</span>
           </button>
-          ${expanded ? `<div class="wiz-batches">${g.line.batches.map((bt) => `<button class="batch-chip${entry && entry.batches && entry.batches.includes(bt) ? " on" : ""}" type="button" data-wiz="batch" data-bottle="${escapeAttr(b.id)}" data-batch="${escapeAttr(bt)}">${escapeHtml(bt)}</button>`).join("")}</div>` : ""}
+          ${expanded ? `<div class="wiz-batches">${g.line.batches.map((bt) => {
+            const C2 = global.BarrelCollection;
+            const label = C2.batchLabel(bt);
+            const proof = C2.batchProof(bt);
+            const year = C2.batchYear(bt);
+            const on = entry && entry.batches && entry.batches.includes(label);
+            const title = [year, Number.isFinite(proof) ? proof + " proof" : ""].filter(Boolean).join(" · ");
+            return `<button class="batch-chip${on ? " on" : ""}" type="button" data-wiz="batch" data-bottle="${escapeAttr(b.id)}" data-batch="${escapeAttr(label)}"${title ? ` title="${escapeAttr(title)}"` : ""}>${escapeHtml(label)}${Number.isFinite(proof) ? ` <i>${proof}</i>` : ""}</button>`;
+          }).join("")}</div>` : ""}
         </div>
       `;
     }
