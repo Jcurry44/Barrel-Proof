@@ -47,6 +47,7 @@
         query: "",
         shelfFilter: "all",
         storeFilters: { type: "", release: "" },
+        storeHidePicks: true,
         activeFamily: "",
         familySort: "count",
         familyType: "",
@@ -172,6 +173,12 @@
 
       if (target.dataset.action === "clear-filters") {
         ctx.ui.storeFilters = { type: "", release: "" };
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "toggle-store-picks") {
+        ctx.ui.storeHidePicks = !(ctx.ui.storeHidePicks !== false);
         render(ctx);
         return;
       }
@@ -944,6 +951,7 @@
 
         <section class="bottle-list" aria-label="Bottle results">
           ${renderSearchSummary(filtered)}
+          ${renderStorePicksToggle(ctx, filtered)}
           ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
         </section>
       </section>
@@ -3962,6 +3970,13 @@
     return true;
   }
 
+  // A genuine store / private / barrel-select pick (the clutter) — NOT a flagship
+  // single-barrel product like Blanton's, Four Roses, or Russell's Reserve.
+  function isStorePick(bottle) {
+    const name = String(bottle && bottle.name || "").toLowerCase();
+    return /\bbarrel select\b|\bbrl slct\b|single barrel select|\bstore pick\b|\bshop pick\b|\bbarrel pick\b|\bprivate (selection|barrel|stock|pick)\b|\bpersonal (selection|barrel)\b|\bhand[- ]?picked\b|\bexclusive\b|buy (the|entire) barrel|\(psb\)|\(sbs\)|\bpsb\b|\bsbs\b|selected by|chosen by|picked by/.test(name);
+  }
+
   function getFilteredBottleInfo(ctx) {
     const query = ctx.ui.query.trim().toLowerCase();
     const filters = ctx.ui.storeFilters || {};
@@ -3969,13 +3984,16 @@
     const hasQuery = query.length >= MIN_SEARCH_CHARS;
     if (!hasQuery && !hasFilters) {
       const mode = query.length > 0 ? "too-short" : "idle";
-      return { items: getDefaultStoreBottles(ctx), totalMatches: ctx.bottles.length, mode, query };
+      return { items: getDefaultStoreBottles(ctx), totalMatches: ctx.bottles.length, hiddenPicks: 0, mode, query };
     }
+    const hidePicks = ctx.ui.storeHidePicks !== false;
     const matches = [];
     let totalMatches = 0;
+    let hiddenPicks = 0;
     for (const bottle of ctx.bottles) {
       if (hasQuery && !bottle._searchText.includes(query)) continue;
       if (hasFilters && !matchesStoreFilters(bottle, filters)) continue;
+      if (hidePicks && isStorePick(bottle)) { hiddenPicks += 1; continue; }
       totalMatches += 1;
       matches.push(bottle);
     }
@@ -3987,6 +4005,7 @@
     return {
       items: matches.slice(0, MAX_SEARCH_RESULTS),
       totalMatches,
+      hiddenPicks,
       mode: hasQuery ? "search" : "filter",
       query
     };
@@ -4038,6 +4057,18 @@
           ${releases.map(([v, l]) => `<button class="filter-button${f.release === v ? " active" : ""}" type="button" data-filtergroup="release" data-filtervalue="${v}" aria-pressed="${f.release === v}">${escapeHtml(l)}</button>`).join("")}
         </div>
         ${active ? `<button class="ghost-link store-filter-clear" type="button" data-action="clear-filters">Clear</button>` : ""}
+      </div>
+    `;
+  }
+
+  function renderStorePicksToggle(ctx, info) {
+    if (info.mode !== "search" && info.mode !== "filter") return "";
+    const hidePicks = ctx.ui.storeHidePicks !== false;
+    // Nothing to reveal and already hiding → no need to show the control.
+    if (hidePicks && !info.hiddenPicks) return "";
+    return `
+      <div class="wiz-picks-row">
+        <button class="wiz-picks-toggle${hidePicks ? "" : " on"}" type="button" data-action="toggle-store-picks">${hidePicks ? "Show store picks (" + info.hiddenPicks + ")" : "Hide store picks"}</button>
       </div>
     `;
   }
