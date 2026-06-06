@@ -67,6 +67,8 @@
         tastingQuery: "",
         tastingBottleId: "",
         nightQuery: "",
+        scorecardOpen: false,
+        scorecardContext: "store",
         researchCopied: false,
         reviewCopied: false
       }
@@ -110,8 +112,36 @@
 
   function bindEvents(ctx) {
     ctx.mount.addEventListener("click", async (event) => {
-      const target = event.target.closest("[data-action], [data-tab], [data-bottle-id], [data-cocktail-id], [data-status], [data-filter], [data-tag], [data-price], [data-family], [data-goto], [data-corner], [data-result], [data-sdview], [data-filtergroup], [data-famsort], [data-famtype], [data-wiz]");
+      // Tap the dimmed backdrop (but not the card itself) closes the scorecard.
+      if (ctx.ui.scorecardOpen && event.target.closest) {
+        if (event.target.closest(".scorecard-backdrop") && !event.target.closest(".scorecard-card")) {
+          ctx.ui.scorecardOpen = false;
+          render(ctx);
+          return;
+        }
+      }
+
+      const target = event.target.closest("[data-action], [data-tab], [data-bottle-id], [data-cocktail-id], [data-status], [data-filter], [data-tag], [data-price], [data-family], [data-goto], [data-corner], [data-result], [data-sdview], [data-filtergroup], [data-famsort], [data-famtype], [data-wiz], [data-open-card]");
       if (!target) return;
+
+      if (target.dataset.openCard) {
+        ctx.state.activeBottleId = target.dataset.openCard;
+        ctx.ui.scorecardContext = target.dataset.cardContext || "store";
+        ctx.ui.scorecardOpen = true;
+        ctx.ui.researchCopied = false;
+        ctx.ui.reviewCopied = false;
+        persist(ctx);
+        render(ctx);
+        const card = ctx.mount.querySelector && ctx.mount.querySelector(".scorecard-card");
+        if (card && card.scrollTop !== undefined) card.scrollTop = 0;
+        return;
+      }
+
+      if (target.dataset.action === "close-card") {
+        ctx.ui.scorecardOpen = false;
+        render(ctx);
+        return;
+      }
 
       if (target.dataset.wiz) {
         handleWizard(ctx, target);
@@ -147,6 +177,7 @@
 
       if (target.dataset.tab) {
         ctx.ui.tab = target.dataset.tab;
+        ctx.ui.scorecardOpen = false;
         render(ctx);
         return;
       }
@@ -158,8 +189,10 @@
       }
 
       if (target.dataset.goto) {
+        // A bottle link from anywhere (For You, Pour Tonight, etc.) opens its scorecard.
         ctx.state.activeBottleId = target.dataset.goto;
-        ctx.ui.tab = "store";
+        ctx.ui.scorecardContext = "store";
+        ctx.ui.scorecardOpen = true;
         ctx.ui.researchCopied = false;
         ctx.ui.reviewCopied = false;
         persist(ctx);
@@ -170,6 +203,7 @@
       if (target.dataset.action === "goto-family") {
         ctx.ui.activeFamily = target.dataset.famid || "";
         ctx.ui.tab = "families";
+        ctx.ui.scorecardOpen = false;
         render(ctx);
         return;
       }
@@ -278,6 +312,7 @@
 
       if (target.dataset.action === "log-active") {
         ctx.ui.tab = "tastings";
+        ctx.ui.scorecardOpen = false;
         render(ctx);
         return;
       }
@@ -336,6 +371,7 @@
         const match = getBestCocktailMatch(ctx, activeBottle);
         if (match) ctx.ui.activeCocktailId = match.cocktail.id;
         ctx.ui.tab = "cocktails";
+        ctx.ui.scorecardOpen = false;
         render(ctx);
         revealCocktailSpec(ctx);
         return;
@@ -489,6 +525,15 @@
         render(ctx);
       }
     });
+
+    if (global.document && global.document.addEventListener) {
+      global.document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && ctx.ui.scorecardOpen) {
+          ctx.ui.scorecardOpen = false;
+          render(ctx);
+        }
+      });
+    }
 
     ctx.mount.addEventListener("input", (event) => {
       const target = event.target;
@@ -644,6 +689,7 @@
         ${ctx.ui.tab === "club" ? renderClub(ctx) : ""}
         ${ctx.ui.tab === "qa" ? renderCatalogQuality(ctx) : ""}
       </main>
+      ${renderScorecard(ctx)}
     `;
     restoreFocusState(ctx.mount, focusState);
   }
@@ -789,91 +835,116 @@
     `;
   }
 
-  function renderStore(ctx, activeBottle, result) {
-    const filtered = getFilteredBottleInfo(ctx);
-    const priceEntered = Number(ctx.state.storePrice) > 0;
-    const importedCount = ctx.catalogMeta.importedBottleCount || Math.max(0, ctx.bottles.length - 10);
-    const fullCount = ctx.catalogMeta.fullBottleCount || importedCount;
-    const rawCatalogNote = fullCount > importedCount
-      ? ` Raw source pool: ${fullCount.toLocaleString("en-US")} records kept behind the confidence gate.`
+  // The reusable bottle scorecard — one focused overlay opened by tapping a bottle
+  // anywhere (Store results, Shelf). Essentials up top; the deep research lives in
+  // a "Full details" expander so the answer is glanceable, no endless scroll.
+  function renderScorecard(ctx) {
+    if (!ctx.ui.scorecardOpen) return "";
+    const bottle = getActiveBottle(ctx);
+    if (!bottle) return "";
+    const isShelf = ctx.ui.scorecardContext === "shelf";
+    const entered = Number(ctx.state.storePrice);
+    const priceEntered = Number.isFinite(entered) && entered > 0;
+    const basis = priceEntered ? entered : (bottle.observedPrice || bottle.shelfAverage || rec.getReferencePrice(bottle));
+    const haveBasis = Number.isFinite(basis) && basis > 0;
+    const result = rec.scoreBottleDecision({
+      bottle,
+      shelfPrice: basis,
+      palate: ctx.palate,
+      friends: ctx.friends,
+      status: ctx.state.statuses[bottle.id]
+    });
+    const showVerdict = priceEntered || (isShelf && haveBasis);
+    const verdictClass = showVerdict ? "decision-" + result.decision.toLowerCase() : "decision-awaiting";
+    const basisNote = (!priceEntered && isShelf && haveBasis)
+      ? "Estimated at " + rec.money(basis) + " (typical). Enter a price to check a specific shelf."
       : "";
+    const pours = (ctx.state.tastings || []).filter((tasting) => tasting.bottleId === bottle.id);
+    const poursAvg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+
     return `
-      <section class="store-grid">
-        <div class="store-left">
-          <section class="search-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Store Mode</p>
-                <h2>Buy window</h2>
-              </div>
-              <button class="scan-button" type="button" disabled title="Requires a real barcode or label-recognition source">Scan</button>
-            </div>
-            <p class="source-note">Manual search across ${importedCount.toLocaleString("en-US")} confident source-backed records. Type at least ${MIN_SEARCH_CHARS} characters to search the app catalog; scanner stays disabled until we connect a real barcode or label-recognition source.${rawCatalogNote}</p>
-            <div class="search-row">
-              <label class="field">
-                <span>Bottle</span>
-                <input id="storeSearch" type="search" value="${escapeHtml(ctx.ui.query)}" placeholder="Search by bottle, distillery, profile">
-              </label>
-              <label class="field price-field">
-                <span>Shelf price</span>
-                <input id="storePrice" type="number" min="0" step="1" value="${Number(ctx.state.storePrice) || ""}" inputmode="decimal">
-              </label>
-            </div>
-            ${renderPriceChips(ctx, activeBottle)}
-            ${renderStoreFilters(ctx)}
-          </section>
-
-          <section class="bottle-list" aria-label="Bottle results">
-            ${renderSearchSummary(filtered)}
-            ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
-          </section>
-        </div>
-
-        <aside class="decision-panel ${priceEntered ? "decision-" + result.decision.toLowerCase() : "decision-awaiting"}">
+      <div class="scorecard-backdrop">
+        <section class="scorecard-card ${verdictClass}" role="dialog" aria-modal="true" aria-label="${escapeAttr(bottle.name)} scorecard">
+          <button class="scorecard-close" type="button" data-action="close-card" aria-label="Close scorecard">&times;</button>
           <div class="decision-topline">
             <div>
-              <p class="eyebrow">Decision</p>
-              <strong>${priceEntered ? escapeHtml(result.decision) : "Enter price"}</strong>
+              <p class="eyebrow">${isShelf ? "Your bottle" : "Decision"}</p>
+              <strong>${showVerdict ? escapeHtml(result.decision) : "Enter price"}</strong>
             </div>
-            <div class="confidence-ring" style="--score:${priceEntered ? result.confidence : 0}">
-              <span>${priceEntered ? result.confidence : "&ndash;"}</span>
+            <div class="confidence-ring" style="--score:${showVerdict ? result.confidence : 0}">
+              <span>${showVerdict ? result.confidence : "&ndash;"}</span>
             </div>
           </div>
-          ${renderBottleHero(ctx, activeBottle)}
-          ${priceEntered ? renderDecisionTrustStack(ctx, activeBottle, result) : ""}
-          <p class="decision-summary">${priceEntered ? escapeHtml(result.summary) : "Enter the shelf price above to get your Buy / Consider / Pass call for " + escapeHtml(activeBottle.name) + "."}</p>
+          ${renderBottleHero(ctx, bottle)}
+          <div class="scorecard-price">
+            <label class="field price-field">
+              <span>Shelf price you see</span>
+              <input id="storePrice" type="number" min="0" step="1" value="${priceEntered ? entered : ""}" inputmode="decimal" placeholder="${haveBasis ? "~" + Math.round(basis) : "price"}">
+            </label>
+            ${renderPriceChips(ctx, bottle)}
+          </div>
+          <p class="decision-summary">${showVerdict ? escapeHtml(result.summary) : "Enter the shelf price to get your Buy / Consider / Pass call."}${basisNote ? ` <span class="muted-note">${escapeHtml(basisNote)}</span>` : ""}</p>
           <div class="decision-metrics">
-            ${metric("MSRP", rec.money(activeBottle.msrp))}
-            ${metric("Reference", getReferencePriceMetric(activeBottle))}
-            ${metric(getMarketMetric(activeBottle).label, getMarketMetric(activeBottle).value)}
+            ${metric("MSRP", rec.money(bottle.msrp))}
+            ${metric("Reference", getReferencePriceMetric(bottle))}
+            ${metric("Palate fit", Math.round((result.palateMatch || 0) * 100) + "%")}
             ${metric("Friends", result.friendAverage ? result.friendAverage.toFixed(1) : "--")}
           </div>
-          ${renderObservedPrices(ctx, activeBottle)}
-          ${renderMarketReality(ctx, activeBottle)}
-          ${renderPriceWindow(activeBottle, result)}
-          ${renderBottleIntelligence(ctx, activeBottle, result)}
-          ${renderReviewIntelligence(ctx, activeBottle)}
-          ${renderBottleDossier(ctx, activeBottle, result)}
-          ${renderCocktailLane(ctx, activeBottle)}
-          ${priceEntered ? `
-            <div class="reason-block">
-              <h3>Reasons</h3>
-              ${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}
-            </div>
-            ${result.cautions.length ? `
-              <div class="reason-block caution">
-                <h3>Cautions</h3>
-                ${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}
-              </div>
-            ` : ""}
-          ` : ""}
+          ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
+          ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
+          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
           <div class="status-actions">
             ${statusButton(ctx, "owned", "Add to shelf")}
             ${statusButton(ctx, "wishlist", "Wishlist")}
             ${statusButton(ctx, "passed", "Pass log")}
             <button class="ghost-button" type="button" data-action="log-active">Log tasting</button>
           </div>
-        </aside>
+          <details class="scorecard-more">
+            <summary>Full details</summary>
+            ${showVerdict ? renderDecisionTrustStack(ctx, bottle, result) : ""}
+            ${renderObservedPrices(ctx, bottle)}
+            ${renderMarketReality(ctx, bottle)}
+            ${renderPriceWindow(bottle, result)}
+            ${renderBottleIntelligence(ctx, bottle, result)}
+            ${renderReviewIntelligence(ctx, bottle)}
+            ${renderBottleDossier(ctx, bottle, result)}
+            ${renderCocktailLane(ctx, bottle)}
+            ${renderBottleScout(ctx, bottle)}
+          </details>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderStore(ctx) {
+    const filtered = getFilteredBottleInfo(ctx);
+    const importedCount = ctx.catalogMeta.importedBottleCount || Math.max(0, ctx.bottles.length - 10);
+    const fullCount = ctx.catalogMeta.fullBottleCount || importedCount;
+    const rawCatalogNote = fullCount > importedCount
+      ? ` Raw source pool: ${fullCount.toLocaleString("en-US")} records kept behind the confidence gate.`
+      : "";
+    return `
+      <section class="section-stack store-stack">
+        <section class="search-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Store Mode</p>
+              <h2>Buy window</h2>
+            </div>
+            <button class="scan-button" type="button" disabled title="Requires a real barcode or label-recognition source">Scan</button>
+          </div>
+          <p class="source-note">Search ${importedCount.toLocaleString("en-US")} confident source-backed records and tap a bottle for its scorecard — your Buy / Consider / Pass call at the price you see. Type at least ${MIN_SEARCH_CHARS} characters.${rawCatalogNote}</p>
+          <label class="field">
+            <span>Bottle</span>
+            <input id="storeSearch" type="search" value="${escapeHtml(ctx.ui.query)}" placeholder="Search by bottle, distillery, profile">
+          </label>
+          ${renderStoreFilters(ctx)}
+        </section>
+
+        <section class="bottle-list" aria-label="Bottle results">
+          ${renderSearchSummary(filtered)}
+          ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
+        </section>
       </section>
     `;
   }
@@ -1535,7 +1606,7 @@
     const friendAvg = rec.getFriendAverage(bottle.id, ctx.friends);
     const proofText = bottle.proofDisplay || (bottle.proof ? bottle.proof + " proof" : "proof n/a");
     return `
-      <button class="mini-bottle${active}" type="button" data-bottle-id="${escapeAttr(bottle.id)}">
+      <button class="mini-bottle${active}" type="button" data-open-card="${escapeAttr(bottle.id)}" data-card-context="store">
         ${bottleVisual(bottle)}
         <span class="mini-main">
           <strong>${escapeHtml(bottle.name)}</strong>
@@ -2672,7 +2743,7 @@
     const count = entry ? entry.count : 0;
     const batches = entry && entry.batches ? entry.batches : [];
     return `
-      <article class="shelf-card" data-tone="${escapeAttr(bottle.imageTone)}">
+      <article class="shelf-card shelf-card-tap" data-tone="${escapeAttr(bottle.imageTone)}" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf" role="button" tabindex="0" aria-label="Open ${escapeAttr(bottle.name)} scorecard">
         <div class="shelf-card-top">
           ${bottleVisual(bottle)}
           <span class="status-pill">${statusLabel(ctx.state.statuses[bottle.id])}</span>

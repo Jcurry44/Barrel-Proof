@@ -1834,6 +1834,120 @@ h3 {
   color: var(--cream);
 }
 
+/* ---------- Bottle scorecard (tap-to-open detail) ---------- */
+.scorecard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(8, 5, 4, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: scfade 160ms ease;
+}
+
+@keyframes scfade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scrise { from { transform: translateY(26px); } to { transform: translateY(0); } }
+
+.scorecard-card {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  max-height: 94vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  gap: 14px;
+  padding: 22px 18px 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px 22px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    var(--panel);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+  animation: scrise 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.scorecard-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  border-radius: 22px 22px 0 0;
+  background: var(--brass);
+}
+.scorecard-card.decision-buy::before { background: #5d9b6b; }
+.scorecard-card.decision-pass::before { background: #b24b44; }
+.scorecard-card.decision-awaiting::before { background: rgba(255, 255, 255, 0.16); }
+
+.scorecard-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--muted-strong);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.scorecard-close:hover { color: var(--cream); border-color: var(--muted); }
+
+.scorecard-price { display: grid; gap: 8px; }
+
+.scorecard-pours {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.scorecard-pours h3 { margin: 0; }
+.scorecard-pours .pour-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.scorecard-pours .pour-row b { color: var(--cream); }
+
+.scorecard-more {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.scorecard-more > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--brass-strong);
+  list-style: none;
+  padding: 6px 0;
+}
+.scorecard-more > summary::-webkit-details-marker { display: none; }
+.scorecard-more > summary::after { content: " \25be"; color: var(--muted); }
+.scorecard-more[open] > summary::after { content: " \25b4"; }
+.scorecard-more[open] { display: grid; gap: 14px; }
+
+.muted-note { color: var(--muted); font-size: 0.85rem; }
+
+.shelf-card-tap { cursor: pointer; }
+.shelf-card-tap:hover { border-color: var(--line-strong); }
+.shelf-card-tap:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+@media (min-width: 720px) {
+  .scorecard-backdrop { align-items: center; padding: 24px; }
+  .scorecard-card { border-radius: 20px; max-height: 90vh; }
+  .scorecard-card::before { border-radius: 20px 20px 0 0; }
+}
+
 .tag-picker {
   display: flex;
   flex-wrap: wrap;
