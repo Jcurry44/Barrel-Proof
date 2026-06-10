@@ -192,3 +192,22 @@ test("imported review data is cited, usable, and intentionally compact", () => {
 
   assert.ok(entryCount >= 14);
 });
+
+const { buildReviewSearchLinks, cleanBottleNameForSearch } = require("../src/logic/reviews.js");
+
+test("every bottle gets review search links (r/bourbon, Breaking Bourbon, Whiskybase)", () => {
+  const links = buildReviewSearchLinks({ name: "Wild Turkey Rare Breed" });
+  assert.equal(links.length, 3);
+  assert.deepEqual(links.map((l) => l.sourceName), ["r/bourbon", "Breaking Bourbon", "Whiskybase"]);
+  for (const link of links) {
+    assert.ok(link.url.startsWith("https://"), link.sourceName + " has https url");
+    assert.ok(decodeURIComponent(link.url).includes("Wild Turkey Rare Breed"), link.sourceName + " carries the bottle name");
+  }
+});
+
+test("search names strip catalog noise but keep the product identity", () => {
+  assert.equal(cleanBottleNameForSearch("1792 Single Barrel Kentucky Straight Bourbon (Buy Entire Barrel) 750ml"), "1792 Single Barrel Kentucky Straight Bourbon");
+  assert.equal(cleanBottleNameForSearch("Knob Creek 15yr Bourbon '21 LTO (Hal) 750ml"), "Knob Creek 15yr Bourbon '21");
+  assert.equal(cleanBottleNameForSearch("Eagle Rare 10YR Single Barrel Bourbon Barrel"), "Eagle Rare 10YR Single Barrel Bourbon Barrel");
+  assert.equal(buildReviewSearchLinks({ name: "" }).length, 0);
+});

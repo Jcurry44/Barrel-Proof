@@ -166,9 +166,37 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  // Strip catalog noise (sizes, store-pick tags, shelf codes) so search engines
+  // see the product, not the shelf row.
+  function cleanBottleNameForSearch(name) {
+    return String(name || "")
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/\b\d+(\.\d+)?\s*(ml|l|liter|litre)\b/gi, " ")
+      .replace(/\b(buy (the|entire) barrel|btb|psb|sbs|hal|lto)\b/gi, " ")
+      .replace(/[#*]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 70);
+  }
+
+  // Every bottle gets a review path, even with zero curated entries: honest
+  // deep-links to the places bourbon people actually read. No invented scores.
+  function buildReviewSearchLinks(bottle) {
+    const name = cleanBottleNameForSearch(bottle && bottle.name);
+    if (!name) return [];
+    const q = encodeURIComponent(name);
+    return [
+      { sourceName: "r/bourbon", url: "https://www.reddit.com/r/bourbon/search/?q=" + q + "&restrict_sr=1" },
+      { sourceName: "Breaking Bourbon", url: "https://www.google.com/search?q=" + encodeURIComponent("site:breakingbourbon.com " + name) },
+      { sourceName: "Whiskybase", url: "https://www.whiskybase.com/search?q=" + q }
+    ];
+  }
+
   return {
     buildReviewIntelligence,
     buildReviewResearchPrompt,
+    buildReviewSearchLinks,
+    cleanBottleNameForSearch,
     getBottleReviewEntries
   };
 });

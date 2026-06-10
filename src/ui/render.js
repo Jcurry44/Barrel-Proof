@@ -920,6 +920,7 @@
             ${metric("Palate fit", Math.round((result.palateMatch || 0) * 100) + "%")}
             ${metric("Friends", result.friendAverage ? result.friendAverage.toFixed(1) : "--")}
           </div>
+          ${renderScorecardReviews(ctx, bottle)}
           ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
           ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
           ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
@@ -942,6 +943,33 @@
             ${renderBottleScout(ctx, bottle)}
           </details>
         </section>
+      </div>
+    `;
+  }
+
+  // Always-present review strip on the scorecard: curated, cited sources when we
+  // have them; honest deep-links to r/bourbon / Breaking Bourbon / Whiskybase
+  // when we don't. A buyer in an aisle should never hit a dead end.
+  function renderScorecardReviews(ctx, bottle) {
+    if (!reviewLogic) return "";
+    const entries = reviewLogic.getBottleReviewEntries
+      ? reviewLogic.getBottleReviewEntries(bottle, ctx.reviewData)
+      : [];
+    if (entries.length) {
+      const top = entries.find((entry) => entry.verdict) || entries[0];
+      return `
+        <div class="scorecard-reviews">
+          <span class="scorecard-reviews-label">Reviews</span>
+          <span class="scorecard-reviews-main">${entries.length} cited source${entries.length === 1 ? "" : "s"}${top && top.verdict ? ` · <a href="${escapeAttr(top.url)}" target="_blank" rel="noopener">${escapeHtml(top.sourceName)}: “${escapeHtml(top.verdict)}”</a>` : ""}</span>
+        </div>
+      `;
+    }
+    const links = reviewLogic.buildReviewSearchLinks ? reviewLogic.buildReviewSearchLinks(bottle) : [];
+    if (!links.length) return "";
+    return `
+      <div class="scorecard-reviews">
+        <span class="scorecard-reviews-label">Reviews</span>
+        <span class="scorecard-reviews-main">${links.map((link) => `<a class="review-link" href="${escapeAttr(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.sourceName)} &rarr;</a>`).join("")}</span>
       </div>
     `;
   }
@@ -1273,8 +1301,8 @@
             ${intel.sources.slice(0, 5).map((source) => `<span>${escapeHtml(source.sourceName)} / ${escapeHtml(source.sourceType)}</span>`).join("")}
           </div>
         ` : `
-          <div class="intel-tags">
-            ${intel.suggestedSources.map((source) => `<span>${escapeHtml(source)}</span>`).join("")}
+          <div class="review-links">
+            ${(reviewLogic && reviewLogic.buildReviewSearchLinks ? reviewLogic.buildReviewSearchLinks(bottle) : []).map((link) => `<a class="review-link" href="${escapeAttr(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.sourceName)} &rarr;</a>`).join("")}
           </div>
           <button class="ghost-button" type="button" data-action="copy-review-research">${ctx.ui.reviewCopied ? "Copied" : "Copy review scout"}</button>
         `}
