@@ -4359,3 +4359,30 @@ button.wiz-line:hover {
   border-color: rgba(241, 205, 132, 0.55);
   background: rgba(203, 163, 90, 0.12);
 }
+
+/* Scanner tuning: capability controls + read feedback */
+.scan-controls {
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+}
+
+.scan-ctl {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+.scan-ctl.active {
+  border-color: var(--brass-strong);
+  background: rgba(203, 163, 90, 0.18);
+  color: var(--cream);
+}
+
+.scan-reticle.scan-hit {
+  animation: bp-scanhit 480ms ease-out;
+}
+
+@keyframes bp-scanhit {
+  0% { border-color: #8fe3a1; box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.22), 0 0 26px rgba(143, 227, 161, 0.8) inset; }
+  100% { border-color: rgba(241, 205, 132, 0.85); box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.22); }
+}

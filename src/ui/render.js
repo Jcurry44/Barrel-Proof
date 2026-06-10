@@ -695,6 +695,10 @@
           <video class="scan-video" muted playsinline></video>
           <div class="scan-reticle" aria-hidden="true"></div>
         </div>
+        <div class="scan-controls">
+          <button class="ghost-button scan-ctl" type="button" data-scan="torch" hidden>Light</button>
+          <button class="ghost-button scan-ctl" type="button" data-scan="zoom" hidden>Zoom 2&times;</button>
+        </div>
         <p class="scan-status">Starting camera&hellip;</p>
         <div class="scan-manual">
           <label class="field"><span>Or type the barcode</span><input class="scan-manual-input" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 088004021344"></label>
@@ -724,6 +728,8 @@
         handleScanCode(ctx, input ? input.value : "");
         return;
       }
+      if (btn && btn.dataset.scan === "torch") { toggleTorch(scanner, btn); return; }
+      if (btn && btn.dataset.scan === "zoom") { toggleZoom(scanner, btn); return; }
       if (event.target === overlay) { closeScanner(ctx); render(ctx); }
     });
     overlay.addEventListener("keydown", (event) => {
@@ -745,10 +751,28 @@
       if (raw === scanner.lastCode && now - scanner.lastAt < 3000) return;
       scanner.lastCode = raw;
       scanner.lastAt = now;
+      flashReticle(scanner);
+      if (global.navigator && global.navigator.vibrate) { try { global.navigator.vibrate(60); } catch (error) {} }
       handleScanCode(ctx, raw);
     };
 
     try {
+      // One getUserMedia for both engines, asking for the sharpest feed the
+      // device will give — resolution is the #1 factor in 1D barcode decoding.
+      scanner.stream = await global.navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: "continuous" }]
+        },
+        audio: false
+      });
+      scanner.track = scanner.stream.getVideoTracks ? scanner.stream.getVideoTracks()[0] : null;
+      scanner.video.srcObject = scanner.stream;
+      await scanner.video.play();
+      revealCameraControls(scanner);
+
       if (typeof global.BarcodeDetector === "function") {
         let detector;
         try {
@@ -756,34 +780,54 @@
         } catch (error) {
           detector = new global.BarcodeDetector();
         }
-        scanner.stream = await global.navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false
-        });
-        scanner.video.srcObject = scanner.stream;
-        await scanner.video.play();
         setScanStatus(ctx, "Point at the barcode.");
+        // Detect on a center crop at native pixels: less frame to scan, more
+        // pixels per bar. Busy flag instead of fixed cadence so slow frames
+        // never stack.
+        const canvas = global.document.createElement("canvas");
+        const cctx = canvas.getContext("2d", { willReadFrequently: true });
+        let busy = false;
         scanner.timer = global.setInterval(async () => {
+          if (busy || !scanner.video.videoWidth) return;
+          busy = true;
           try {
-            const found = await detector.detect(scanner.video);
+            const vw = scanner.video.videoWidth, vh = scanner.video.videoHeight;
+            const cw = Math.round(vw * 0.8), chh = Math.round(vh * 0.55);
+            canvas.width = cw; canvas.height = chh;
+            cctx.drawImage(scanner.video, (vw - cw) / 2, (vh - chh) / 2, cw, chh, 0, 0, cw, chh);
+            let found = await detector.detect(canvas);
+            if (!(found && found.length)) found = await detector.detect(scanner.video);
             if (found && found.length && found[0].rawValue) onCode(found[0].rawValue);
           } catch (error) { /* per-frame detect errors are normal while focusing */ }
-        }, 260);
+          busy = false;
+        }, 150);
         return;
       }
 
-      // iOS Safari path: lazy-load the vendored ZXing reader on first scan.
+      // iOS Safari path: vendored ZXing with decode hints — fewer formats to
+      // try plus TRY_HARDER = faster, more reliable 1D reads.
       setScanStatus(ctx, "Loading scanner…");
       await loadScannerLibrary();
       if (!global.ZXing || !ctx._scanner) return;
-      scanner.reader = new global.ZXing.BrowserMultiFormatReader();
+      const Z = global.ZXing;
+      let hints = null;
+      try {
+        hints = new Map([
+          [Z.DecodeHintType.POSSIBLE_FORMATS, [
+            Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E,
+            Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8,
+            Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.QR_CODE
+          ]],
+          [Z.DecodeHintType.TRY_HARDER, true]
+        ]);
+      } catch (error) { hints = null; }
+      scanner.reader = new Z.BrowserMultiFormatReader(hints);
       const onResult = (result) => { if (result && result.getText) onCode(result.getText()); };
-      if (scanner.reader.decodeFromConstraints) {
-        await scanner.reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" } }, audio: false },
-          scanner.video,
-          onResult
-        );
+      // Decode from OUR stream so the torch/zoom track controls stay live.
+      if (scanner.reader.decodeFromStream) {
+        await scanner.reader.decodeFromStream(scanner.stream, scanner.video, onResult);
+      } else if (scanner.reader.decodeFromVideoElement) {
+        await scanner.reader.decodeFromVideoElement(scanner.video, onResult);
       } else {
         await scanner.reader.decodeFromVideoDevice(undefined, scanner.video, onResult);
       }
@@ -791,6 +835,42 @@
     } catch (error) {
       setScanStatus(ctx, "Camera unavailable — type the code below instead.");
     }
+  }
+
+  // Show torch / zoom buttons only when the camera actually supports them
+  // (mostly Android; iOS exposes neither — the buttons stay hidden there).
+  function revealCameraControls(scanner) {
+    if (!scanner.track || !scanner.track.getCapabilities) return;
+    let caps = null;
+    try { caps = scanner.track.getCapabilities(); } catch (error) { return; }
+    if (!caps) return;
+    const torchBtn = scanner.overlay.querySelector('[data-scan="torch"]');
+    const zoomBtn = scanner.overlay.querySelector('[data-scan="zoom"]');
+    if (caps.torch && torchBtn) torchBtn.hidden = false;
+    if (caps.zoom && Number(caps.zoom.max) >= 2 && zoomBtn) zoomBtn.hidden = false;
+  }
+
+  function toggleTorch(scanner, btn) {
+    if (!scanner.track || !scanner.track.applyConstraints) return;
+    scanner.torchOn = !scanner.torchOn;
+    scanner.track.applyConstraints({ advanced: [{ torch: scanner.torchOn }] }).catch(() => {});
+    btn.classList.toggle("active", scanner.torchOn);
+  }
+
+  function toggleZoom(scanner, btn) {
+    if (!scanner.track || !scanner.track.applyConstraints) return;
+    scanner.zoomed = !scanner.zoomed;
+    scanner.track.applyConstraints({ advanced: [{ zoom: scanner.zoomed ? 2 : 1 }] }).catch(() => {});
+    btn.classList.toggle("active", scanner.zoomed);
+    btn.textContent = scanner.zoomed ? "Zoom 1×" : "Zoom 2×";
+  }
+
+  function flashReticle(scanner) {
+    const reticle = scanner.overlay && scanner.overlay.querySelector(".scan-reticle");
+    if (!reticle) return;
+    reticle.classList.remove("scan-hit");
+    void reticle.offsetWidth;
+    reticle.classList.add("scan-hit");
   }
 
   let scannerLibraryPromise = null;
