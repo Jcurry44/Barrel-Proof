@@ -4119,3 +4119,144 @@ button.wiz-line:hover {
     grid-template-columns: minmax(70px, 1fr) minmax(0, 1.4fr) auto;
   }
 }
+
+/* ---------- Reviews everywhere (scorecard strip + deep links) ---------- */
+.scorecard-reviews {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.scorecard-reviews-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scorecard-reviews-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted-strong);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.scorecard-reviews-main a {
+  color: var(--brass-strong);
+  text-decoration: none;
+}
+
+.scorecard-reviews-main a:hover {
+  text-decoration: underline;
+}
+
+.review-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--brass-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.review-link:hover {
+  border-color: var(--brass-strong);
+  background: rgba(203, 163, 90, 0.14);
+  color: var(--cream);
+}
+
+/* ---------- Premium motion ---------- */
+@property --score {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Tab content rises in on each view change. */
+  main > * {
+    animation: bp-rise 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  /* Scorecard: ring sweeps to its score, verdict stamps in. */
+  .scorecard-card .confidence-ring {
+    animation: bp-ringfill 750ms cubic-bezier(0.3, 0.6, 0.2, 1);
+  }
+
+  .scorecard-card .decision-topline strong {
+    animation: bp-stamp 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  }
+
+  .mini-bottle,
+  .shelf-card,
+  .cocktail-card,
+  .batch-chip,
+  .price-chip,
+  .night-result,
+  .review-link {
+    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  }
+
+  .mini-bottle:hover,
+  .shelf-card-tap:hover,
+  .cocktail-card:hover,
+  .night-result:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  }
+
+  .batch-chip:hover,
+  .price-chip:hover,
+  .review-link:hover {
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes bp-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bp-ringfill {
+  from { --score: 0; }
+}
+
+@keyframes bp-stamp {
+  0% { opacity: 0; transform: scale(1.22); letter-spacing: 0.04em; }
+  100% { opacity: 1; transform: scale(1); letter-spacing: -0.02em; }
+}
+
+/* Verdict-tinted ambient glow on the scorecard. */
+.scorecard-card.decision-buy {
+  box-shadow: 0 -18px 70px rgba(93, 155, 107, 0.18), 0 -20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.scorecard-card.decision-pass {
+  box-shadow: 0 -18px 70px rgba(178, 75, 68, 0.16), 0 -20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.scorecard-card.decision-consider {
+  box-shadow: 0 -18px 70px rgba(203, 163, 90, 0.14), 0 -20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.mini-bottle:hover {
+  border-color: rgba(203, 163, 90, 0.45);
+}
