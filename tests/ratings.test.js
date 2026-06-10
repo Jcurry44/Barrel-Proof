@@ -106,3 +106,18 @@ test("guessVerdict gives partial credit for the right house or style", () => {
   // unknown producer never grants house credit
   assert.equal(ratings.guessVerdict("unknown producer", { name: "X" }, { distillery: "Unknown producer", style: "" }).level, "miss");
 });
+
+test("rebuyBoard: latest verdict per bottle wins; buckets are right", () => {
+  const board = ratings.rebuyBoard([
+    { bottleId: "weller", date: "2026-01-01", rebuy: false },
+    { bottleId: "weller", date: "2026-05-01", rebuy: true },   // rebought, finished again → latest wins
+    { bottleId: "ecbp", date: "2026-03-01", rebuy: false },
+    { bottleId: "rare-breed", date: "2026-06-01", rebuy: null }
+  ]);
+  assert.deepEqual(board.rebuys.map((e) => e.bottleId), ["weller"]);
+  assert.deepEqual(board.enoughs.map((e) => e.bottleId), ["ecbp"]);
+  assert.deepEqual(board.unanswered.map((e) => e.bottleId), ["rare-breed"]);
+  assert.equal(board.finishedCount, 3);
+  assert.equal(ratings.rebuyBoard([]).finishedCount, 0);
+  assert.equal(ratings.rebuyBoard(undefined).finishedCount, 0);
+});

@@ -145,6 +145,22 @@
     return { rows: rows.slice(0, Number.isFinite(limit) ? limit : 12), summary };
   }
 
+  // The kill log distilled: for each finished bottle, the LATEST verdict wins
+  // (you can finish a bottle, rebuy it, and finish it again with a new answer).
+  function rebuyBoard(killLog) {
+    const latest = new Map();
+    for (const entry of killLog || []) {
+      if (entry && entry.bottleId) latest.set(entry.bottleId, entry);
+    }
+    const rows = [...latest.values()];
+    return {
+      rebuys: rows.filter((entry) => entry.rebuy === true),
+      enoughs: rows.filter((entry) => entry.rebuy === false),
+      unanswered: rows.filter((entry) => entry.rebuy !== true && entry.rebuy !== false),
+      finishedCount: rows.length
+    };
+  }
+
   return {
     CATEGORIES,
     average,
@@ -154,6 +170,7 @@
     guessVerdict,
     isBlindTasting,
     isGuessCorrect,
-    matchesCategory
+    matchesCategory,
+    rebuyBoard
   };
 });

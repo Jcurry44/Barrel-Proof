@@ -70,3 +70,17 @@ test("unscored glasses are reported, not ranked", () => {
   assert.equal(results.unscored.length, 1);
   assert.equal(results.unscored[0].bottleName, "B");
 });
+
+test("setGuess stores the room's call per glass and flightResults carries it", () => {
+  const flight = night.createFlight([{ id: "a", name: "A" }, { id: "b", name: "B" }], ["Joe"], { shuffle: (l) => l });
+  night.setGuess(flight, "A", "  some weller?  ");
+  night.setGuess(flight, "B", "ECBP");
+  night.setGuess(flight, "B", "");   // clearing removes it
+  night.setScore(flight, "A", "Joe", 9);
+  night.setScore(flight, "B", "Joe", 7);
+  const results = night.flightResults(flight, () => ({}));
+  const a = results.ranked.find((r) => r.glass === "A");
+  const b = results.ranked.find((r) => r.glass === "B");
+  assert.equal(a.guess, "some weller?");
+  assert.equal(b.guess, "");
+});

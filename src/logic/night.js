@@ -90,6 +90,16 @@
     return flight;
   }
 
+  // The room's guess for a glass — the parlor game inside the flight.
+  function setGuess(flight, glass, text) {
+    if (!flight) return flight;
+    if (!flight.guesses || typeof flight.guesses !== "object") flight.guesses = {};
+    const clean = String(text == null ? "" : text).trim().slice(0, 80);
+    if (!clean) delete flight.guesses[glass];
+    else flight.guesses[glass] = clean;
+    return flight;
+  }
+
   function scoredCount(flight) {
     let count = 0;
     const scores = (flight && flight.scores) || {};
@@ -128,6 +138,7 @@
         glass: pour.glass,
         bottleId: pour.bottleId,
         bottleName: pour.bottleName,
+        guess: ((flight && flight.guesses) || {})[pour.glass] || "",
         scores,
         average: avg,
         refPrice: numOrNull(info.refPrice),
@@ -185,6 +196,7 @@
     glassAverage,
     glassLetters,
     scoredCount,
+    setGuess,
     setScore,
     uniqueNames
   };

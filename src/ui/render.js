@@ -702,6 +702,13 @@
           persist(ctx);
         }
       }
+      if (target.dataset && target.dataset.nightGuess) {
+        const flight = ctx.state.activeFlight;
+        if (flight && nightLogic && nightLogic.setGuess) {
+          nightLogic.setGuess(flight, target.dataset.nightGuess, target.value);
+          persist(ctx);
+        }
+      }
     });
 
     ctx.mount.addEventListener("submit", (event) => {
@@ -3384,6 +3391,15 @@
     const biggest = gaps[0];
     const biggestName = biggest ? byId.get(biggest.bottleId).name : null;
 
+    // Your blind-call record from every guessed pour.
+    const guessed = tastings.filter((t) => ratingsLogic.isBlindTasting(t) && t.guess);
+    let nailedCount = 0, closeCount = 0;
+    for (const t of guessed) {
+      const verdict = getGuessVerdict(ctx, t, byId.get(t.bottleId));
+      if (verdict && verdict.level === "nailed") nailedCount++;
+      else if (verdict && verdict.level === "close") closeCount++;
+    }
+
     const cat = ctx.ui.ratingsCategory || "all";
     const ratedBottles = ratedIds.map((id) => byId.get(id));
     const board = ratingsLogic.categoryBoard(ratings, ratedBottles, (bottle) => bottleAttrs(bottle), cat, 12);
@@ -3394,6 +3410,7 @@
         ${insight("Pours scored", pourCount, blindCount ? blindCount + " of them blind" : "none blind yet")}
         ${insight("Blind gaps", gaps.length, "sighted vs blind ≥ 0.5")}
         ${insight("Biggest gap", biggest ? (biggest.delta > 0 ? "+" : "") + biggest.delta.toFixed(1) : "--", biggest ? shortName(biggestName) : "needs blind + sighted pours")}
+        ${guessed.length ? insight("Blind calls", nailedCount + " of " + guessed.length, "🎯 nailed" + (closeCount ? " · " + closeCount + " 🔥 close" : "")) : ""}
       </div>
 
       <section class="search-panel">
@@ -3426,6 +3443,8 @@
         `}
       </section>
 
+      ${renderRebuyBoard(ctx, byId)}
+
       <section class="search-panel">
         <div class="panel-heading">
           <div>
@@ -3451,6 +3470,35 @@
             `).join("")}
           </div>
         ` : `<p class="source-note">Nothing rated in this style yet.</p>`}
+      </section>
+    `;
+  }
+
+  // The truest list in the app: not what you rated highest — what you actually
+  // finished and would hand money over for again.
+  function renderRebuyBoard(ctx, byId) {
+    if (!ratingsLogic || !ratingsLogic.rebuyBoard) return "";
+    const board = ratingsLogic.rebuyBoard(ctx.state.killLog);
+    if (!board.finishedCount) return "";
+    const row = (entry, cls, mark) => {
+      const bottle = byId.get(entry.bottleId);
+      if (!bottle) return "";
+      return `<button class="rank-row board-row rebuy-row ${cls}" type="button" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf"><span>${mark}</span><div><strong>${escapeHtml(bottle.name)}</strong><small>finished ${escapeHtml(entry.date || "")}</small></div></button>`;
+    };
+    return `
+      <section class="search-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">The rebuy list</p>
+            <h3>Bottles you finished — and your verdict</h3>
+          </div>
+          <strong>${board.finishedCount}</strong>
+        </div>
+        <div class="board-list">
+          ${board.rebuys.map((entry) => row(entry, "yes", "↻")).join("")}
+          ${board.enoughs.map((entry) => row(entry, "no", "—")).join("")}
+        </div>
+        ${board.unanswered.length ? `<p class="source-line">${board.unanswered.length} finished bottle${board.unanswered.length === 1 ? "" : "s"} still need${board.unanswered.length === 1 ? "s" : ""} a verdict — open ${board.unanswered.length === 1 ? "its" : "their"} scorecard and answer “Buy it again?”.</p>` : ""}
       </section>
     `;
   }
@@ -3593,6 +3641,7 @@
 
   function renderNightGlass(flight, pour, tasters) {
     const row = (flight.scores || {})[pour.glass] || {};
+    const guess = ((flight.guesses || {})[pour.glass]) || "";
     return `
       <section class="night-glass">
         <div class="night-glass-letter" aria-hidden="true">${escapeHtml(pour.glass)}</div>
@@ -3601,6 +3650,7 @@
             const value = Number.isFinite(row[taster]) ? row[taster] : "";
             return `<label class="night-score"><span>${escapeHtml(taster)}</span><input type="number" min="1" max="10" step="0.1" inputmode="decimal" value="${value}" data-night-glass="${escapeAttr(pour.glass)}" data-night-taster="${escapeAttr(taster)}"></label>`;
           }).join("")}
+          <label class="night-score night-guess-row"><span>Guess</span><input type="text" autocomplete="off" placeholder="what is it?" value="${escapeAttr(guess)}" data-night-guess="${escapeAttr(pour.glass)}"></label>
         </div>
       </section>
     `;
@@ -3615,7 +3665,7 @@
           ${results.headline ? `<p class="night-headline">${escapeHtml(results.headline)}</p>` : ""}
         </section>
         <div class="night-ranking">
-          ${results.ranked.map((row, index) => renderNightRankRow(row, index)).join("") || emptyState("No scores were entered for this flight.")}
+          ${results.ranked.map((row, index) => renderNightRankRow(ctx, row, index)).join("") || emptyState("No scores were entered for this flight.")}
         </div>
         ${results.unscored.length ? `<p class="source-line">Not scored: ${results.unscored.map((row) => escapeHtml(row.glass + " · " + row.bottleName)).join(", ")}</p>` : ""}
         <div class="club-actions">
@@ -3626,13 +3676,26 @@
     `;
   }
 
-  function renderNightRankRow(row, index) {
+  function renderNightRankRow(ctx, row, index) {
+    let guessLine = "";
+    if (row.guess) {
+      const bottle = getBottleIndex(ctx).get(row.bottleId);
+      const verdict = getGuessVerdict(ctx, { guess: row.guess }, bottle);
+      if (verdict && verdict.level === "nailed") {
+        guessLine = `<p class="guess-line"><span class="guess-nailed">🎯 Nailed it</span> — the room guessed “${escapeHtml(row.guess)}”</p>`;
+      } else if (verdict && verdict.level === "close") {
+        guessLine = `<p class="guess-line"><span class="guess-close">🔥 Close</span> (${escapeHtml(verdict.why)}) — guessed “${escapeHtml(row.guess)}”</p>`;
+      } else {
+        guessLine = `<p class="guess-line">The room guessed “${escapeHtml(row.guess)}”</p>`;
+      }
+    }
     return `
       <article class="night-rank${index === 0 ? " winner" : ""}">
         <span class="night-rank-pos">${index + 1}</span>
         <div class="night-rank-main">
           <strong>${escapeHtml(row.bottleName)}</strong>
           <small>Glass ${escapeHtml(row.glass)}${Number.isFinite(row.refPrice) ? " · " + rec.money(row.refPrice) : ""}</small>
+          ${guessLine}
           <div class="night-rank-scores">${row.scores.map((entry) => `<span>${escapeHtml(entry.taster)} ${entry.score.toFixed(1)}</span>`).join("")}</div>
         </div>
         <b class="night-rank-avg">${row.average.toFixed(1)}</b>
@@ -3668,7 +3731,8 @@
       for (const pour of flight.pours || []) {
         const score = flight.scores && flight.scores[pour.glass] ? flight.scores[pour.glass][owner] : undefined;
         if (!Number.isFinite(score)) continue;
-        ctx.state.tastings.unshift({
+        const glassGuess = ((flight.guesses || {})[pour.glass]) || "";
+        const nightTasting = {
           id: "taste-night-" + pour.glass + "-" + Date.now() + "-" + logged,
           bottleId: pour.bottleId,
           date,
@@ -3677,7 +3741,9 @@
           blind: true,
           tags: [],
           note: "Glass " + pour.glass + ", scored blind"
-        });
+        };
+        if (glassGuess) nightTasting.guess = glassGuess;
+        ctx.state.tastings.unshift(nightTasting);
         ctx.state.statuses[pour.bottleId] = ctx.state.statuses[pour.bottleId] || "tasted";
         logged += 1;
       }

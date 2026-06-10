@@ -4573,3 +4573,9 @@ button.wiz-line:hover {
 .finish-btn { margin-left: auto; }
 
 .guess-close { color: #f0b46a; font-style: normal; font-weight: 800; }
+
+/* Rebuy board + night guesses */
+.rebuy-row.yes > span:first-child { color: #a9d8b4; font-weight: 900; }
+.rebuy-row.no > span:first-child { color: var(--muted); }
+.night-guess-row input { width: 100%; min-width: 120px; }
+.night-guess-row span { color: var(--brass-strong); }
