@@ -9,6 +9,17 @@
   const ratingsLogic = global.BarrelRatings;
   const cocktailLogic = global.BarrelCocktails;
   const MIN_SEARCH_CHARS = 2;
+  // The flavor wheel, grouped the way tasters think. Custom write-ins join the
+  // same tag set and render under "Yours".
+  const TAG_GROUPS = [
+    ["Sweet", ["caramel", "vanilla", "honey", "maple", "brown sugar", "butterscotch"]],
+    ["Fruit", ["cherry", "dark fruit", "stone fruit", "citrus", "apple", "berry"]],
+    ["Spice", ["baking spice", "cinnamon", "black pepper", "clove", "mint", "rye spice"]],
+    ["Oak & earth", ["oak", "char", "leather", "tobacco", "cocoa", "coffee", "nutty", "earthy"]],
+    ["Grain & floral", ["corn", "wheat", "floral", "grassy", "herbal"]],
+    ["Feel", ["heat", "creamy", "oily", "thin", "dry", "long finish"]]
+  ];
+  const ALL_WHEEL_TAGS = new Set(TAG_GROUPS.flatMap(([, tags]) => tags));
   const MAX_EMPTY_RESULTS = 8;
   const MAX_SEARCH_RESULTS = 60;
   const MAX_QA_ISSUES = 80;
@@ -67,12 +78,13 @@
         showdownA: "",
         showdownB: "",
         activeCocktailId: options.cocktails && options.cocktails[0] ? options.cocktails[0].id : "",
-        tastingTags: new Set(["oak", "caramel"]),
+        tastingTags: new Set(),
         tastingQuery: "",
         tastingBottleId: "",
         tastingsView: "log",
         ratingsCategory: "all",
-        tastingDraft: { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false },
+        identityQuery: "",
+        tastingDraft: { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false, batch: "", nose: "", palateNote: "", finish: "" },
         nightQuery: "",
         lastScanCode: "",
         scorecardOpen: false,
@@ -203,6 +215,63 @@
       if (target.dataset.action === "tasting-blind") {
         ctx.ui.tastingDraft.blind = target.dataset.blind === "1";
         render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "tasting-batch") {
+        const label = target.dataset.batch;
+        ctx.ui.tastingDraft.batch = ctx.ui.tastingDraft.batch === label ? "" : label;
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "add-custom-tag") {
+        const input = ctx.mount.querySelector ? ctx.mount.querySelector("#customTag") : null;
+        const tag = input ? String(input.value).toLowerCase().trim().slice(0, 24) : "";
+        if (tag) {
+          ctx.ui.tastingTags.add(tag);
+          render(ctx);
+        }
+        return;
+      }
+
+      if (target.dataset.action === "identity-link") {
+        const bottle = getActiveBottle(ctx);
+        let canon = target.dataset.canon;
+        if (bottle && canon && canon !== bottle.id) {
+          const links = ctx.state.identityLinks || (ctx.state.identityLinks = {});
+          // flatten chains: if the target is itself linked, point at its canonical
+          canon = links[canon] || canon;
+          links[bottle.id] = canon;
+          ctx.ui.identityQuery = "";
+          persist(ctx);
+          render(ctx);
+          showToast(ctx, "Linked — pours on either spelling now count as one bottle.");
+        }
+        return;
+      }
+
+      if (target.dataset.action === "identity-unlink") {
+        const bottle = getActiveBottle(ctx);
+        if (bottle && ctx.state.identityLinks) {
+          delete ctx.state.identityLinks[bottle.id];
+          persist(ctx);
+          render(ctx);
+        }
+        return;
+      }
+
+      if (target.dataset.action === "night-share") {
+        const idx = target.dataset.flightI;
+        const flight = idx !== undefined && idx !== "" ? (ctx.state.flights || [])[Number(idx)] : ctx.state.activeFlight;
+        if (!flight || !nightLogic || !nightLogic.buildRecapText) return;
+        const dateLabel = (flight.savedAt || flight.createdAt || new Date().toISOString()).slice(0, 10);
+        const text = nightLogic.buildRecapText(flight, makeNightLookup(ctx), dateLabel);
+        if (global.navigator && global.navigator.share) {
+          global.navigator.share({ text }).catch(() => copyText(text).then(() => showToast(ctx, "Recap copied — paste it in the group chat.")));
+        } else {
+          copyText(text).then(() => showToast(ctx, "Recap copied — paste it in the group chat."));
+        }
         return;
       }
 
@@ -638,6 +707,16 @@
 
     if (global.document && global.document.addEventListener) {
       global.document.addEventListener("keydown", (event) => {
+        // Enter in the flavor write-in adds the tag instead of submitting the form.
+        if (event.key === "Enter" && event.target && event.target.id === "customTag") {
+          event.preventDefault();
+          const tag = String(event.target.value).toLowerCase().trim().slice(0, 24);
+          if (tag) {
+            ctx.ui.tastingTags.add(tag);
+            render(ctx);
+          }
+          return;
+        }
         if (event.key !== "Escape") return;
         if (ctx._scanner) { closeScanner(ctx); render(ctx); return; }
         if (ctx.ui.scorecardOpen) {
@@ -674,10 +753,6 @@
         ctx.ui.tastingQuery = target.value;
         scheduleRender(ctx, 80);
       }
-      if (target.name === "bottleId") {
-        // Keep the chosen tasting bottle stable across search re-renders.
-        ctx.ui.tastingBottleId = target.value;
-      }
       if (target.id === "nightSearch") {
         ctx.ui.nightQuery = target.value;
         scheduleRender(ctx, 80);
@@ -691,6 +766,20 @@
         if (target.name === "context") draft.context = target.value;
         if (target.name === "note") draft.note = target.value;
         if (target.name === "guess") draft.guess = target.value;
+        if (target.name === "barrel") draft.batch = target.value;
+        if (target.name === "nose") draft.nose = target.value;
+        if (target.name === "palateNote") draft.palateNote = target.value;
+        if (target.name === "finish") draft.finish = target.value;
+        if (target.name === "bottleId") {
+          // bottle changed → batch chips belong to the new bottle
+          draft.batch = "";
+          ctx.ui.tastingBottleId = target.value;
+          render(ctx);
+        }
+      }
+      if (target.id === "identitySearch") {
+        ctx.ui.identityQuery = target.value;
+        scheduleRender(ctx, 120);
       }
 
       if (target.dataset && target.dataset.nightGlass) {
@@ -729,12 +818,18 @@
         note: String(data.get("note") || "").trim()
       };
       if (guess) tasting.guess = guess;
+      const batch = String((ctx.ui.tastingDraft && ctx.ui.tastingDraft.batch) || data.get("barrel") || "").trim().slice(0, 60);
+      if (batch) tasting.batch = batch;
+      for (const [field, key] of [["nose", "nose"], ["palateNote", "palate"], ["finish", "finish"]]) {
+        const value = String(data.get(field) || "").trim().slice(0, 160);
+        if (value) tasting[key] = value;
+      }
       ctx.state.tastings.unshift(tasting);
       ctx.state.statuses[tasting.bottleId] = ctx.state.statuses[tasting.bottleId] || "tasted";
-      ctx.ui.tastingTags = new Set(["oak", "caramel"]);
+      ctx.ui.tastingTags = new Set();
       ctx.ui.tastingQuery = "";
       ctx.ui.tastingBottleId = "";
-      ctx.ui.tastingDraft = { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false };
+      ctx.ui.tastingDraft = { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false, batch: "", nose: "", palateNote: "", finish: "" };
       persist(ctx);
       render(ctx);
       if (guess) {
@@ -1278,8 +1373,17 @@
     const basisNote = (!priceEntered && isShelf && haveBasis)
       ? "Estimated at " + rec.money(basis) + " (typical). Enter a price to check a specific shelf."
       : "";
-    const pours = (ctx.state.tastings || []).filter((tasting) => tasting.bottleId === bottle.id);
+    const canonId = resolveIdentity(ctx, bottle.id);
+    const pours = (ctx.state.tastings || []).filter((tasting) => resolveIdentity(ctx, tasting.bottleId) === canonId);
     const poursAvg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+    const batchAverages = {};
+    for (const pour of pours) {
+      if (!pour.batch || !Number.isFinite(Number(pour.score))) continue;
+      (batchAverages[pour.batch] = batchAverages[pour.batch] || []).push(Number(pour.score));
+    }
+    const batchRows = Object.entries(batchAverages)
+      .map(([label, scores]) => ({ label, avg: average(scores), count: scores.length }))
+      .sort((a, b) => b.avg - a.avg);
 
     return `
       <div class="scorecard-backdrop">
@@ -1313,7 +1417,7 @@
           ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
           ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
           ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
-          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
+          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${pour.batch ? ' <span class="batch-tag">' + escapeHtml(pour.batch) + "</span>" : ""}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}${batchRows.length ? `<div class="batch-breakdown">${batchRows.map((row) => `<span class="batch-tag">${escapeHtml(row.label)} · ${row.avg.toFixed(1)}${row.count > 1 ? " (" + row.count + ")" : ""}</span>`).join("")}</div>` : ""}</section>` : ""}
           ${renderScorecardShelfRow(ctx, bottle)}
           <div class="status-actions">
             ${statusButton(ctx, "owned", "Add to shelf")}
@@ -1331,6 +1435,7 @@
             ${renderReviewIntelligence(ctx, bottle)}
             ${renderBottleDossier(ctx, bottle, result)}
             ${renderCocktailLane(ctx, bottle)}
+            ${renderIdentityPanel(ctx, bottle)}
             ${renderBottleScout(ctx, bottle)}
           </details>
         </section>
@@ -1370,6 +1475,40 @@
       `;
     }
     return "";
+  }
+
+  // The catalog has many spellings of some bottles. Let the user declare "this
+  // IS that" so their pours and ratings aggregate under one canonical record.
+  function renderIdentityPanel(ctx, bottle) {
+    const links = ctx.state.identityLinks || {};
+    const byId = getBottleIndex(ctx);
+    const linkedTo = links[bottle.id] ? byId.get(links[bottle.id]) : null;
+    const incoming = Object.keys(links).filter((id) => links[id] === bottle.id).length;
+    if (linkedTo) {
+      return `
+        <section class="identity-panel">
+          <h3>Same bottle</h3>
+          <p>Counts as <strong>${escapeHtml(linkedTo.name)}</strong> in your ratings. <button class="link-inline" type="button" data-action="identity-unlink">Unlink</button></p>
+        </section>
+      `;
+    }
+    const query = (ctx.ui.identityQuery || "").trim().toLowerCase();
+    let results = [];
+    if (query.length >= MIN_SEARCH_CHARS) {
+      for (const candidate of ctx.bottles) {
+        if (results.length >= 6) break;
+        if (candidate.id === bottle.id) continue;
+        if (candidate._searchText.includes(query)) results.push(candidate);
+      }
+    }
+    return `
+      <section class="identity-panel">
+        <h3>Same bottle, different spelling?</h3>
+        <p class="source-note">If this is a duplicate of another catalog record, link it — pours on either spelling count as one bottle.${incoming ? " " + incoming + " record" + (incoming === 1 ? "" : "s") + " already point here." : ""}</p>
+        <label class="field"><input id="identitySearch" type="search" value="${escapeAttr(ctx.ui.identityQuery || "")}" placeholder="Search the bottle this really is" autocomplete="off"></label>
+        ${query.length >= MIN_SEARCH_CHARS ? `<div class="night-results">${results.length ? results.map((candidate) => `<button class="night-result" type="button" data-action="identity-link" data-canon="${escapeAttr(candidate.id)}"><strong>${escapeHtml(candidate.name)}</strong><small>${escapeHtml(getBottleMaker(candidate))}</small></button>`).join("") : `<p class="source-line">No matches.</p>`}</div>` : ""}
+      </section>
+    `;
   }
 
   function getGuessVerdict(ctx, tasting, bottle) {
@@ -3302,10 +3441,59 @@
     return `<section class="section-stack">${toggle}${renderTastingLog(ctx)}</section>`;
   }
 
+  function renderTastingFlavorWheel(ctx) {
+    const custom = [...ctx.ui.tastingTags].filter((tag) => !ALL_WHEEL_TAGS.has(tag));
+    return `
+      <div class="field"><span>Flavors</span></div>
+      ${TAG_GROUPS.map(([group, tags]) => `
+        <div class="tag-group">
+          <small>${escapeHtml(group)}</small>
+          <div class="tag-picker">
+            ${tags.map((tag) => `<button class="${ctx.ui.tastingTags.has(tag) ? "active" : ""}" type="button" data-tag="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`).join("")}
+          </div>
+        </div>
+      `).join("")}
+      <div class="tag-group">
+        <small>Yours</small>
+        <div class="tag-picker">
+          ${custom.map((tag) => `<button class="active" type="button" data-tag="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`).join("")}
+          <span class="custom-tag-add"><input id="customTag" type="text" placeholder="write your own…" maxlength="24" autocomplete="off"><button class="ghost-button" type="button" data-action="add-custom-tag">Add</button></span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTastingBatchPicker(ctx, bottle, draft) {
+    const C = global.BarrelCollection;
+    if (!C || !bottle) return "";
+    const line = C.batchLineFor(bottle);
+    if (!line) return "";
+    if (line.perBarrel) {
+      return `
+        <label class="field">
+          <span>Barrel / pick <em class="optional-tag">optional — it's on the label</em></span>
+          <input name="barrel" type="text" value="${escapeAttr(draft.batch || "")}" placeholder="e.g. RIO-300, dump date, pick name" autocomplete="off">
+        </label>
+      `;
+    }
+    return `
+      <div class="field">
+        <span>Which batch? <em class="optional-tag">optional — batches drink differently</em></span>
+        <div class="wiz-batches form-batches">
+          ${line.batches.map((entry) => {
+            const label = C.batchLabel(entry);
+            const proof = C.batchProof(entry);
+            const on = draft.batch === label;
+            return `<button class="batch-chip${on ? " on" : ""}" type="button" data-action="tasting-batch" data-batch="${escapeAttr(label)}">${escapeHtml(label)}${Number.isFinite(proof) ? ` <i>${proof}</i>` : ""}</button>`;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+
   function renderTastingLog(ctx) {
     const today = new Date().toISOString().slice(0, 10);
     const draft = ctx.ui.tastingDraft || { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false };
-    const tags = ["oak", "caramel", "cherry", "baking spice", "vanilla", "cocoa", "heat", "floral"];
     const picker = getTastingPickerBottles(ctx);
     const searching = (ctx.ui.tastingQuery || "").trim().length >= MIN_SEARCH_CHARS;
     const pickerHint = searching
@@ -3331,6 +3519,7 @@
             </select>
             <small class="source-line">${escapeHtml(pickerHint)}</small>
           </label>
+          ${renderTastingBatchPicker(ctx, getBottleIndex(ctx).get(picker.chosenId), draft)}
           <div class="form-pair">
             <label class="field">
               <span>Date</span>
@@ -3358,12 +3547,16 @@
             <span>Context</span>
             <input name="context" type="text" value="${escapeAttr(draft.context)}">
           </label>
-          <div class="tag-picker">
-            ${tags.map((tag) => `<button class="${ctx.ui.tastingTags.has(tag) ? "active" : ""}" type="button" data-tag="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`).join("")}
-          </div>
+          ${renderTastingFlavorWheel(ctx)}
+          <details class="npf-details"${draft.nose || draft.palateNote || draft.finish ? " open" : ""}>
+            <summary>Structured notes — nose / palate / finish</summary>
+            <label class="field"><span>Nose</span><input name="nose" type="text" value="${escapeAttr(draft.nose || "")}" autocomplete="off"></label>
+            <label class="field"><span>Palate</span><input name="palateNote" type="text" value="${escapeAttr(draft.palateNote || "")}" autocomplete="off"></label>
+            <label class="field"><span>Finish</span><input name="finish" type="text" value="${escapeAttr(draft.finish || "")}" autocomplete="off"></label>
+          </details>
           <label class="field">
             <span>Notes</span>
-            <textarea name="note" rows="5" placeholder="What stood out?">${escapeHtml(draft.note)}</textarea>
+            <textarea name="note" rows="4" placeholder="What stood out?">${escapeHtml(draft.note)}</textarea>
           </label>
           <button class="primary-button" type="submit">Save tasting</button>
         </form>
@@ -3378,7 +3571,7 @@
   // and leaderboards by style (BiB, cask strength, rye...).
   function renderRatingsView(ctx) {
     if (!ratingsLogic) return emptyState("Ratings unavailable.");
-    const ratings = ratingsLogic.bottleRatings(ctx.state);
+    const ratings = ratingsLogic.bottleRatings(ctx.state, (id) => resolveIdentity(ctx, id));
     const byId = getBottleIndex(ctx);
     const ratedIds = Object.keys(ratings).filter((id) => byId.get(id));
     if (!ratedIds.length) {
@@ -3443,6 +3636,8 @@
         `}
       </section>
 
+      ${renderCalibrationPanel(ctx, ratings, byId)}
+
       ${renderRebuyBoard(ctx, byId)}
 
       <section class="search-panel">
@@ -3470,6 +3665,46 @@
             `).join("")}
           </div>
         ` : `<p class="source-note">Nothing rated in this style yet.</p>`}
+      </section>
+    `;
+  }
+
+  // Score calibration: your distribution (what an 8.5 actually means from you)
+  // and where your numbers disagree with your blind Showdown picks.
+  function renderCalibrationPanel(ctx, ratings, byId) {
+    if (!ratingsLogic || !ratingsLogic.scoreDistribution) return "";
+    const dist = ratingsLogic.scoreDistribution(ctx.state.tastings);
+    if (!dist || dist.count < 3) return "";
+    const maxCount = Math.max(...dist.buckets.map((bucket) => bucket.count), 1);
+    const conflicts = ratingsLogic.ratingConflicts(ratings, ctx.state.matchups, byId).slice(0, 5);
+    return `
+      <section class="search-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Calibration</p>
+            <h3>What your numbers actually mean</h3>
+          </div>
+        </div>
+        <div class="calib-bars">
+          ${dist.buckets.map((bucket) => `
+            <div class="calib-bar">
+              <i>${escapeHtml(bucket.label)}</i>
+              <span class="gap-track"><span style="width:${Math.round((bucket.count / maxCount) * 100)}%"></span></span>
+              <b>${bucket.count}</b>
+            </div>
+          `).join("")}
+        </div>
+        <p class="source-line">Median pour: ${dist.median.toFixed(1)} · a 9.0 is your top ${dist.topShare(9)}% · top decile starts at ${dist.p90.toFixed(1)}.</p>
+        ${conflicts.length ? `
+          <h4 class="calib-subhead">Your scores vs your blind picks</h4>
+          <div class="conflict-list">
+            ${conflicts.map((conflict) => {
+              const higher = byId.get(conflict.ratedHigher);
+              const picked = byId.get(conflict.pickedMore);
+              return `<div class="conflict-row">You rate <button class="link-inline" type="button" data-open-card="${escapeAttr(higher.id)}" data-card-context="shelf">${escapeHtml(higher.name)}</button> ${conflict.ratedGap.toFixed(1)} higher — but you've picked <button class="link-inline" type="button" data-open-card="${escapeAttr(picked.id)}" data-card-context="shelf">${escapeHtml(picked.name)}</button> ${conflict.record} head-to-head.</div>`;
+            }).join("")}
+          </div>
+        ` : ""}
       </section>
     `;
   }
@@ -3520,9 +3755,10 @@
     return `
       <article class="tasting-card${blind ? " blind" : ""}">
         <div>
-          <p class="eyebrow">${escapeHtml(tasting.date)}${blind ? ' · <span class="blind-chip">Blind</span>' : ""}</p>
+          <p class="eyebrow">${escapeHtml(tasting.date)}${tasting.batch ? ' · <span class="batch-tag">' + escapeHtml(tasting.batch) + "</span>" : ""}${blind ? ' · <span class="blind-chip">Blind</span>' : ""}</p>
           <h3>${escapeHtml(bottle ? bottle.name : "Unknown bottle")}</h3>
           ${guessLine}
+          ${tasting.nose || tasting.palate || tasting.finish ? `<p class="npf-line">${[["N", tasting.nose], ["P", tasting.palate], ["F", tasting.finish]].filter(([, v]) => v).map(([k, v]) => `<b>${k}:</b> ${escapeHtml(v)}`).join(" · ")}</p>` : ""}
           <p>${escapeHtml(tasting.note || tasting.context)}</p>
           <div class="hero-tags">${(tasting.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
         </div>
@@ -3670,6 +3906,7 @@
         ${results.unscored.length ? `<p class="source-line">Not scored: ${results.unscored.map((row) => escapeHtml(row.glass + " · " + row.bottleName)).join(", ")}</p>` : ""}
         <div class="club-actions">
           <button class="primary-button" type="button" data-action="night-save">Save to history</button>
+          <button class="ghost-button" type="button" data-action="night-share">Share recap</button>
           <button class="ghost-button" type="button" data-action="night-discard">Discard</button>
         </div>
       </section>
@@ -3709,12 +3946,12 @@
       <section class="search-panel">
         <div class="panel-heading"><div><p class="eyebrow">History</p><h3>Past flights</h3></div></div>
         <div class="night-history">
-          ${history.slice(0, 8).map((flight) => {
+          ${history.slice(0, 8).map((flight, flightIndex) => {
             const results = nightLogic.flightResults(flight, makeNightLookup(ctx));
             const winner = results.ranked[0];
             const date = flight.savedAt ? flight.savedAt.slice(0, 10) : "";
             const tasterCount = (flight.tasters || []).length;
-            return `<div class="night-history-row"><div><strong>${winner ? escapeHtml(winner.bottleName) : "No scores"}</strong><small>${(flight.pours || []).length} bottles · ${tasterCount} taster${tasterCount === 1 ? "" : "s"}${date ? " · " + escapeHtml(date) : ""}</small></div>${winner ? `<b>${winner.average.toFixed(1)}</b>` : ""}</div>`;
+            return `<div class="night-history-row"><div><strong>${winner ? escapeHtml(winner.bottleName) : "No scores"}</strong><small>${(flight.pours || []).length} bottles · ${tasterCount} taster${tasterCount === 1 ? "" : "s"}${date ? " · " + escapeHtml(date) : ""}</small></div><span class="night-history-actions">${winner ? `<b>${winner.average.toFixed(1)}</b>` : ""}<button class="ghost-button share-mini" type="button" data-action="night-share" data-flight-i="${flightIndex}">Share</button></span></div>`;
           }).join("")}
         </div>
       </section>
@@ -4566,6 +4803,13 @@
     const fallback = ctx.bottles[0];
     if (fallback) ctx.state.activeBottleId = fallback.id;
     return fallback;
+  }
+
+  // User-taught "same bottle" links: duplicate catalog spellings resolve to one
+  // canonical bottle for ratings and pour history.
+  function resolveIdentity(ctx, id) {
+    const links = ctx.state.identityLinks || {};
+    return links[id] || id;
   }
 
   // Memoized id -> bottle lookup. ctx.bottles is immutable after boot, so build once.

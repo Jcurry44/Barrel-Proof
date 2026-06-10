@@ -84,3 +84,16 @@ test("setGuess stores the room's call per glass and flightResults carries it", (
   assert.equal(a.guess, "some weller?");
   assert.equal(b.guess, "");
 });
+
+test("buildRecapText produces a shareable group-chat recap", () => {
+  const flight = night.createFlight([{ id: "a", name: "Old Forester 1920" }, { id: "b", name: "Rare Breed" }], ["Joe", "Dana"], { shuffle: (l) => l });
+  night.setScore(flight, "A", "Joe", 9.4);
+  night.setScore(flight, "B", "Joe", 8.1);
+  night.setGuess(flight, "A", "of 1920");
+  const text = night.buildRecapText(flight, () => ({}), "2026-06-10");
+  assert.match(text, /Blind Flight · 2026-06-10/);
+  assert.match(text, /Tasters: Joe, Dana/);
+  assert.match(text, /🥇 Old Forester 1920 — 9\.4 \(Glass A\) · guessed “of 1920”/);
+  assert.match(text, /🥈 Rare Breed — 8\.1/);
+  assert.match(text, /Barrel Proof/);
+});

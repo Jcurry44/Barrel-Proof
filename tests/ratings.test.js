@@ -121,3 +121,38 @@ test("rebuyBoard: latest verdict per bottle wins; buckets are right", () => {
   assert.equal(ratings.rebuyBoard([]).finishedCount, 0);
   assert.equal(ratings.rebuyBoard(undefined).finishedCount, 0);
 });
+
+test("identity resolver merges duplicate spellings into one rating record", () => {
+  const splitState = { tastings: [
+    { bottleId: "eagle-import", score: 9, context: "Neat" },
+    { bottleId: "eagle-seed", score: 8, context: "Neat" }
+  ]};
+  const links = { "eagle-import": "eagle-seed" };
+  const merged = ratings.bottleRatings(splitState, (id) => links[id] || id);
+  assert.equal(merged["eagle-import"], undefined);
+  assert.equal(merged["eagle-seed"].count, 2);
+  assert.equal(merged["eagle-seed"].avg, 8.5);
+});
+
+test("scoreDistribution buckets pours and frames percentiles", () => {
+  const dist = ratings.scoreDistribution([5, 6.5, 7.5, 8.2, 8.7, 9.1, 9.4].map((score) => ({ score })));
+  assert.equal(dist.count, 7);
+  assert.deepEqual(dist.buckets.map((b) => b.count), [1, 1, 1, 2, 2]);
+  assert.equal(dist.topShare(9), 28.6);
+  assert.ok(dist.p90 >= 9);
+  assert.equal(ratings.scoreDistribution([]), null);
+});
+
+test("ratingConflicts finds score-vs-pick disagreements both directions", () => {
+  const r = { a: { avg: 9.2 }, b: { avg: 8.2 }, c: { avg: 7.0 } };
+  const matchups = [
+    { aId: "a", bId: "b", winnerId: "b" },
+    { aId: "b", bId: "a", winnerId: "b" },
+    { aId: "a", bId: "c", winnerId: "a" }   // consistent — no conflict
+  ];
+  const conflicts = ratings.ratingConflicts(r, matchups);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].ratedHigher, "a");
+  assert.equal(conflicts[0].pickedMore, "b");
+  assert.equal(conflicts[0].record, "2–0");
+});

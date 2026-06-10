@@ -4579,3 +4579,64 @@ button.wiz-line:hover {
 .rebuy-row.no > span:first-child { color: var(--muted); }
 .night-guess-row input { width: 100%; min-width: 120px; }
 .night-guess-row span { color: var(--brass-strong); }
+
+/* Connoisseur pass: wheel groups, N/P/F, batch tags, calibration, identity */
+.tag-group { display: grid; gap: 5px; margin-bottom: 4px; }
+.tag-group > small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.custom-tag-add { display: inline-flex; gap: 6px; align-items: center; }
+.custom-tag-add input {
+  width: 150px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+.custom-tag-add .ghost-button { padding: 5px 12px; font-size: 0.78rem; }
+
+.npf-details { border-top: 1px solid var(--line); padding-top: 8px; }
+.npf-details summary { cursor: pointer; color: var(--brass-strong); font-weight: 700; font-size: 0.86rem; }
+.npf-details[open] { display: grid; gap: 8px; }
+.npf-line { margin: 4px 0 0; color: var(--muted-strong); font-size: 0.85rem; }
+.npf-line b { color: var(--brass-strong); }
+
+.batch-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(241, 205, 132, 0.4);
+  background: rgba(203, 163, 90, 0.12);
+  color: var(--brass-strong);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+.form-batches { margin-top: 6px; }
+.batch-breakdown { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.calib-bars { display: grid; gap: 6px; }
+.calib-bar { display: grid; grid-template-columns: 44px minmax(0,1fr) 34px; gap: 10px; align-items: center; }
+.calib-bar i { font-style: normal; color: var(--muted); font-size: 0.74rem; }
+.calib-bar b { text-align: right; color: var(--cream); font-size: 0.85rem; }
+.calib-subhead { margin: 14px 0 8px; color: var(--muted-strong); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.conflict-list { display: grid; gap: 8px; }
+.conflict-row {
+  padding: 10px 12px;
+  border: 1px solid rgba(178, 75, 68, 0.3);
+  border-radius: 10px;
+  background: rgba(178, 75, 68, 0.07);
+  color: var(--muted-strong);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.identity-panel { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.identity-panel h3 { margin: 0; }
+.night-history-actions { display: inline-flex; align-items: center; gap: 10px; }
+.share-mini { padding: 4px 10px; font-size: 0.74rem; }

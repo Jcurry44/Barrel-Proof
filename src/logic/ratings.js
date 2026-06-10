@@ -64,12 +64,14 @@
   // Your rating record per bottle: sighted vs blind kept separate, plus the
   // delta between them (positive = you score it higher when you can SEE it —
   // the label tax; negative = it overperforms blind).
-  function bottleRatings(state) {
+  function bottleRatings(state, resolveId) {
     const byBottle = {};
     for (const tasting of (state && state.tastings) || []) {
-      const id = tasting && tasting.bottleId;
+      let id = tasting && tasting.bottleId;
       const score = Number(tasting && tasting.score);
       if (!id || !Number.isFinite(score)) continue;
+      // identityLinks resolve duplicate catalog spellings to one canonical bottle.
+      if (resolveId) id = resolveId(id) || id;
       const row = byBottle[id] || (byBottle[id] = { sighted: [], blind: [] });
       (isBlindTasting(tasting) ? row.blind : row.sighted).push(score);
     }
@@ -145,6 +147,70 @@
     return { rows: rows.slice(0, Number.isFinite(limit) ? limit : 12), summary };
   }
 
+  // Score calibration: where your numbers actually live. Buckets plus the
+  // thresholds that turn "a 9" into "your top N%".
+  function scoreDistribution(tastings) {
+    const scores = (tastings || [])
+      .map((tasting) => Number(tasting && tasting.score))
+      .filter((score) => Number.isFinite(score))
+      .sort((a, b) => a - b);
+    if (!scores.length) return null;
+    const buckets = [
+      { label: "≤6", min: -Infinity, max: 6, count: 0 },
+      { label: "6–7", min: 6, max: 7, count: 0 },
+      { label: "7–8", min: 7, max: 8, count: 0 },
+      { label: "8–9", min: 8, max: 9, count: 0 },
+      { label: "9+", min: 9, max: Infinity, count: 0 }
+    ];
+    for (const score of scores) {
+      const bucket = buckets.find((b) => score > b.min && score <= b.max) || buckets[buckets.length - 1];
+      bucket.count += 1;
+    }
+    const at = (p) => scores[Math.min(scores.length - 1, Math.floor(p * scores.length))];
+    return {
+      count: scores.length,
+      median: round1(at(0.5)),
+      p90: round1(at(0.9)),
+      max: scores[scores.length - 1],
+      buckets,
+      // share of pours at or above a given score — "a 9.0 is your top X%"
+      topShare: (score) => round1((scores.filter((s) => s >= score).length / scores.length) * 100)
+    };
+  }
+
+  // Where your scores and your blind head-to-head record disagree: you RATE one
+  // bottle higher, but you PICKED the other when they faced off in Showdown.
+  function ratingConflicts(ratings, matchups, bottlesById) {
+    const record = new Map();
+    for (const matchup of matchups || []) {
+      if (!matchup || !matchup.aId || !matchup.bId) continue;
+      if (matchup.winnerId !== matchup.aId && matchup.winnerId !== matchup.bId) continue;
+      const [x, y] = [matchup.aId, matchup.bId].sort();
+      const key = x + "|" + y;
+      const row = record.get(key) || { x, y, xWins: 0, yWins: 0 };
+      if (matchup.winnerId === x) row.xWins += 1;
+      else row.yWins += 1;
+      record.set(key, row);
+    }
+    const conflicts = [];
+    for (const row of record.values()) {
+      const rx = (ratings || {})[row.x];
+      const ry = (ratings || {})[row.y];
+      if (!rx || !ry) continue;
+      const gap = rx.avg - ry.avg;
+      // conflict = meaningfully higher-rated bottle is LOSING the head-to-heads
+      if (gap >= 0.4 && row.yWins > row.xWins) {
+        conflicts.push({ ratedHigher: row.x, pickedMore: row.y, ratedGap: round1(gap), record: row.yWins + "–" + row.xWins });
+      } else if (-gap >= 0.4 && row.xWins > row.yWins) {
+        conflicts.push({ ratedHigher: row.y, pickedMore: row.x, ratedGap: round1(-gap), record: row.xWins + "–" + row.yWins });
+      }
+    }
+    conflicts.sort((a, b) => b.ratedGap - a.ratedGap);
+    return bottlesById
+      ? conflicts.filter((c) => bottlesById.get(c.ratedHigher) && bottlesById.get(c.pickedMore))
+      : conflicts;
+  }
+
   // The kill log distilled: for each finished bottle, the LATEST verdict wins
   // (you can finish a bottle, rebuy it, and finish it again with a new answer).
   function rebuyBoard(killLog) {
@@ -171,6 +237,8 @@
     isBlindTasting,
     isGuessCorrect,
     matchesCategory,
-    rebuyBoard
+    ratingConflicts,
+    rebuyBoard,
+    scoreDistribution
   };
 });

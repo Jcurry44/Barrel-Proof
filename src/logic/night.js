@@ -186,8 +186,32 @@
     return winner.bottleName + " took the flight.";
   }
 
+  // A group-chat-ready recap of the flight. Pure text — works with the native
+  // share sheet or the clipboard.
+  function buildRecapText(flight, lookup, dateLabel) {
+    const results = flightResults(flight, lookup);
+    const lines = [];
+    lines.push("🥃 Blind Flight" + (dateLabel ? " · " + dateLabel : ""));
+    if (results.tasters.length) lines.push("Tasters: " + results.tasters.join(", "));
+    lines.push("");
+    results.ranked.forEach((row, index) => {
+      const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : (index + 1) + ".";
+      let line = medal + " " + row.bottleName + " — " + row.average.toFixed(1) + " (Glass " + row.glass + ")";
+      if (row.guess) line += " · guessed “" + row.guess + "”";
+      lines.push(line);
+    });
+    if (results.headline) {
+      lines.push("");
+      lines.push(results.headline);
+    }
+    lines.push("");
+    lines.push("— scored blind with Barrel Proof");
+    return lines.join("\n");
+  }
+
   return {
     average,
+    buildRecapText,
     canReveal,
     clampScore,
     createFlight,

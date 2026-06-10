@@ -265,7 +265,8 @@
     activeFlight: null,
     flights: [],
     barcodeLinks: {},
-    killLog: []
+    killLog: [],
+    identityLinks: {}
   };
 
   global.BarrelData = {

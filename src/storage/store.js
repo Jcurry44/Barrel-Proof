@@ -6,7 +6,7 @@
   }
 })(typeof window !== "undefined" ? window : globalThis, function createStore(global) {
   const STORAGE_KEY = "barrel-proof-state-v1";
-  const CURRENT_VERSION = 9;
+  const CURRENT_VERSION = 10;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -33,7 +33,8 @@
       activeFlight: migrated.activeFlight && typeof migrated.activeFlight === "object" ? migrated.activeFlight : (fallback.activeFlight || null),
       flights: Array.isArray(migrated.flights) ? migrated.flights : (fallback.flights || []),
       barcodeLinks: migrated.barcodeLinks && typeof migrated.barcodeLinks === "object" ? migrated.barcodeLinks : (fallback.barcodeLinks || {}),
-      killLog: Array.isArray(migrated.killLog) ? migrated.killLog : (fallback.killLog || [])
+      killLog: Array.isArray(migrated.killLog) ? migrated.killLog : (fallback.killLog || []),
+      identityLinks: migrated.identityLinks && typeof migrated.identityLinks === "object" ? migrated.identityLinks : (fallback.identityLinks || {})
     };
     return validateState(normalized, fallback, options);
   }
@@ -72,6 +73,9 @@
     }
     if (version < 9) {
       next.killLog = Array.isArray(next.killLog) ? next.killLog : [];
+    }
+    if (version < 10) {
+      next.identityLinks = next.identityLinks && typeof next.identityLinks === "object" ? next.identityLinks : {};
     }
     return next;
   }
