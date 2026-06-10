@@ -504,6 +504,81 @@
         { label: "Single Barrel", proof: 97 },
         { label: "Millennium", proof: 99 }
       ]
+    },
+    {
+      // Names like "Old Cassidy by Rare Character" must hit this BEFORE the
+      // Rare Character catch-all below.
+      match: ["old cassidy"],
+      perBarrel: true,
+      label: "Old Cassidy (Rare Character)",
+      howToId: "Rare Character's top-shelf batched line from special parcels. Log the batch/bottle details from the label — age, proof, and parcel notes vary per release."
+    },
+    {
+      match: ["brook hill"],
+      perBarrel: true,
+      label: "Brook Hill (Rare Character)",
+      howToId: "Every Brook Hill is a well-aged cask-strength Kentucky single barrel (roughly 8–20 yrs), and most carry a barrel NICKNAME (e.g. “Villain”, “Scarlet”). Log the nickname, age, exact proof, and who selected it — that combination is your bottle."
+    },
+    {
+      match: ["rare character"],
+      perBarrel: true,
+      label: "Rare Character (Single Barrel)",
+      howToId: "Almost everything is a unique cask-strength single barrel (~110–135 proof, some hazmat). Read the label: “Selected by ___” (store/club), the barrel code like RIO-300 or TRT-07 (the 3-letter prefix = mash bill + source state, decoded on rarecharacterwhiskey.com/barrelbreakdown), age in years AND months, exact proof to decimals, mash bill, and distilled/bottled dates. For RCLR Limited Release blends, log the batch number instead."
+    },
+    {
+      matchRe: /old forester.*117|117 series/,
+      label: "Old Forester 117 Series",
+      howToId: "Distillery-exclusive 375 ml series — the release name is on the front label, and repeated expressions (High Angels' Share, Extra Extra Old, Bottled in Bond) carry a Batch 00X number.",
+      batches: [
+        { label: "High Angels' Share B1", year: 2021, proof: 110 },
+        { label: "Warehouse K", year: 2021, proof: 110 },
+        { label: "1910 Extra Old", year: 2022, proof: 93 },
+        { label: "Whiskey Row Fire", year: 2022, proof: 100 },
+        { label: "1910 Extra Extra Old B1", year: 2022, proof: 93 },
+        { label: "Warehouse H", year: 2023, proof: 98 },
+        { label: "Bottled in Bond", year: 2023, proof: 100 },
+        { label: "Scotch Cask Finish", year: 2023, proof: 93 },
+        { label: "High Angels' Share B2", year: 2024, proof: 110 },
+        { label: "Rum Finish", year: 2024, proof: 95 },
+        { label: "Warehouse I", year: 2024, proof: 95 },
+        { label: "High Angels' Share B3", year: 2025, proof: 110 },
+        { label: "Bottled in Bond Rye", year: 2025, proof: 100 },
+        { label: "1910 Extra Extra Old B2", year: 2025, proof: 93 },
+        { label: "Prohibition Era Still Proof", year: 2025, proof: 130 },
+        { label: "High Angels' Share Rye", year: 2026, proof: 110 }
+      ]
+    },
+    {
+      // The aged limiteds only — Knob Creek 9/12/Single Barrel Reserve are
+      // fixed-proof core products and stay out of this line.
+      matchRe: /knob creek.*\b(15|18|21|2001)\b|knob creek.*(15|18|21)\s*y/,
+      label: "Knob Creek Aged Limiteds",
+      howToId: "All bottled at 100 proof — the age statement plus the KC batch code on the label (KC001/KC002/KC003) pins the release; the 2001 vintage prints Batch 1/2/3.",
+      batches: [
+        { label: "2001 LE · Batch 1", year: 2016, proof: 100 },
+        { label: "2001 LE · Batch 2", year: 2016, proof: 100 },
+        { label: "2001 LE · Batch 3", year: 2016, proof: 100 },
+        { label: "15 Yr · KC001", year: 2020, proof: 100 },
+        { label: "15 Yr · KC002", year: 2021, proof: 100 },
+        { label: "18 Yr · debut", year: 2022, proof: 100 },
+        { label: "18 Yr · KC002", year: 2023, proof: 100 },
+        { label: "18 Yr · KC003", year: 2024, proof: 100 },
+        { label: "21 Yr", year: 2025, proof: 100 }
+      ]
+    },
+    {
+      matchRe: /1792.*(aged twelve|12\s*y)/,
+      label: "1792 Aged Twelve Years",
+      howToId: "One small batch each summer since 2019, always 96.6 proof — the label doesn't change, so read the laser-etched bottling date code on the glass for the year.",
+      batches: [
+        { label: "2019", year: 2019, proof: 96.6 },
+        { label: "2020", year: 2020, proof: 96.6 },
+        { label: "2021", year: 2021, proof: 96.6 },
+        { label: "2022", year: 2022, proof: 96.6 },
+        { label: "2023", year: 2023, proof: 96.6 },
+        { label: "2024", year: 2024, proof: 96.6 },
+        { label: "2025", year: 2025, proof: 96.6 }
+      ]
     }
   ];
 

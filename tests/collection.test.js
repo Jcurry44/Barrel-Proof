@@ -140,3 +140,17 @@ test("known-good spot checks: researched proofs survive future edits", () => {
   // George T. Stagg famously skipped 2021.
   assert.equal(byLabel("George T. Stagg").batches.some((b) => C.batchLabel(b) === "2021"), false);
 });
+
+test("round-4 lines route correctly (Rare Character, KC aged, 1792 12, OF 117)", () => {
+  assert.equal(route("Old Cassidy by Rare Character"), "Old Cassidy (Rare Character)");
+  assert.equal(route("Rare Character SB Bourbon"), "Rare Character (Single Barrel)");
+  assert.equal(route("Brook Hill KY BBN Villain-6 YR"), "Brook Hill (Rare Character)");
+  assert.equal(route("Scapegrace Fortuna"), "(none)");
+  assert.equal(route("Knob Creek 18 Yo"), "Knob Creek Aged Limiteds");
+  assert.equal(route("Knob Creek 12 Year"), "(none)");
+  assert.equal(route("Knob Creek Single Barrel Reserve 120"), "(none)");
+  assert.equal(route("1792 12YR Old Bourbon"), "1792 Aged Twelve Years");
+  assert.equal(route("1792 Full Proof Straight Bourbon 125 Proof"), "(none)");
+  assert.equal(route("Old Forester 117 Series High Angels Share"), "Old Forester 117 Series");
+  assert.equal(route("Stellum Bourb Equinox Blend #1 (117.26p Black Label)"), "(none)");
+});
