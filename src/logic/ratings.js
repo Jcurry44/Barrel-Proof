@@ -5,10 +5,25 @@
     root.BarrelRatings = factory();
   }
 })(typeof self !== "undefined" ? self : this, function createRatingsModule() {
-  // A pour scored during a blind flight is logged with a "Blind" context by the
-  // Night tab; anything else counts as sighted (label visible).
+  // Explicit flag wins (the Log form and Night flights set it); fall back to the
+  // "Blind" context text for tastings logged before the flag existed.
   function isBlindTasting(tasting) {
+    if (tasting && typeof tasting.blind === "boolean") return tasting.blind;
     return /blind/i.test(String(tasting && tasting.context || ""));
+  }
+
+  function normalizeGuessText(value) {
+    return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  // Did a blind guess name the bottle? Generous matching: the guess naming the
+  // bottle (or one of its aliases), or vice versa, counts — "eagle rare" nails
+  // "Eagle Rare 10 Year".
+  function isGuessCorrect(guess, bottle) {
+    const g = normalizeGuessText(guess);
+    if (!g || g.length < 3 || !bottle) return false;
+    const names = [bottle.name, ...(bottle.aliases || [])].map(normalizeGuessText).filter(Boolean);
+    return names.some((name) => name.includes(g) || g.includes(name));
   }
 
   function round1(value) {
@@ -111,6 +126,7 @@
     bottleRatings,
     categoryBoard,
     isBlindTasting,
+    isGuessCorrect,
     matchesCategory
   };
 });

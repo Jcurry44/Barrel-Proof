@@ -72,6 +72,7 @@
         tastingBottleId: "",
         tastingsView: "log",
         ratingsCategory: "all",
+        tastingDraft: { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false },
         nightQuery: "",
         lastScanCode: "",
         scorecardOpen: false,
@@ -195,6 +196,12 @@
 
       if (target.dataset.action === "tastings-view") {
         ctx.ui.tastingsView = target.dataset.view || "log";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "tasting-blind") {
+        ctx.ui.tastingDraft.blind = target.dataset.blind === "1";
         render(ctx);
         return;
       }
@@ -623,6 +630,17 @@
         ctx.ui.nightQuery = target.value;
         scheduleRender(ctx, 80);
       }
+      // Keep the tasting form's draft alive across re-renders (tag taps, the
+      // blind toggle) so typed notes are never wiped.
+      if (target.name && target.closest && target.closest("[data-tasting-form]")) {
+        const draft = ctx.ui.tastingDraft;
+        if (target.name === "date") draft.date = target.value;
+        if (target.name === "score") draft.score = target.value;
+        if (target.name === "context") draft.context = target.value;
+        if (target.name === "note") draft.note = target.value;
+        if (target.name === "guess") draft.guess = target.value;
+      }
+
       if (target.dataset && target.dataset.nightGlass) {
         // Save each blind score immediately, but do NOT re-render — that would steal
         // focus while the table is being passed around and scored.
@@ -639,22 +657,32 @@
       if (!form) return;
       event.preventDefault();
       const data = new FormData(form);
+      const blind = Boolean(ctx.ui.tastingDraft && ctx.ui.tastingDraft.blind);
+      const guess = blind ? String(data.get("guess") || "").trim().slice(0, 80) : "";
       const tasting = {
         id: "taste-" + Date.now(),
         bottleId: String(data.get("bottleId")),
         date: String(data.get("date")),
         score: Number(data.get("score")),
         context: String(data.get("context") || "Neat pour"),
+        blind,
         tags: Array.from(ctx.ui.tastingTags),
         note: String(data.get("note") || "").trim()
       };
+      if (guess) tasting.guess = guess;
       ctx.state.tastings.unshift(tasting);
       ctx.state.statuses[tasting.bottleId] = ctx.state.statuses[tasting.bottleId] || "tasted";
       ctx.ui.tastingTags = new Set(["oak", "caramel"]);
       ctx.ui.tastingQuery = "";
       ctx.ui.tastingBottleId = "";
+      ctx.ui.tastingDraft = { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false };
       persist(ctx);
       render(ctx);
+      if (guess) {
+        const bottle = getBottleIndex(ctx).get(tasting.bottleId);
+        const nailed = ratingsLogic && ratingsLogic.isGuessCorrect(guess, bottle);
+        showToast(ctx, nailed ? "Nailed it — you called " + (bottle ? bottle.name : "it") + " blind. 🎯" : "Logged blind. The reveal: " + (bottle ? bottle.name : "saved."));
+      }
     });
   }
 
@@ -1220,7 +1248,7 @@
           ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
           ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
           ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
-          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
+          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
           <div class="status-actions">
             ${statusButton(ctx, "owned", "Add to shelf")}
             ${statusButton(ctx, "wishlist", "Wishlist")}
@@ -3165,6 +3193,7 @@
 
   function renderTastingLog(ctx) {
     const today = new Date().toISOString().slice(0, 10);
+    const draft = ctx.ui.tastingDraft || { score: "8.5", context: "Neat pour", note: "", guess: "", blind: false };
     const tags = ["oak", "caramel", "cherry", "baking spice", "vanilla", "cocoa", "heat", "floral"];
     const picker = getTastingPickerBottles(ctx);
     const searching = (ctx.ui.tastingQuery || "").trim().length >= MIN_SEARCH_CHARS;
@@ -3194,23 +3223,36 @@
           <div class="form-pair">
             <label class="field">
               <span>Date</span>
-              <input name="date" type="date" value="${today}">
+              <input name="date" type="date" value="${escapeAttr(draft.date || today)}">
             </label>
             <label class="field">
               <span>Score</span>
-              <input name="score" type="number" min="1" max="10" step="0.1" value="8.5">
+              <input name="score" type="number" min="1" max="10" step="0.1" value="${escapeAttr(draft.score)}">
             </label>
           </div>
+          <div class="field">
+            <span>How you tasted it</span>
+            <div class="blind-toggle" role="group" aria-label="Sighted or blind">
+              <button class="filter-button${draft.blind ? "" : " active"}" type="button" data-action="tasting-blind" data-blind="0">Knew the bottle</button>
+              <button class="filter-button${draft.blind ? " active" : ""}" type="button" data-action="tasting-blind" data-blind="1">Blind</button>
+            </div>
+          </div>
+          ${draft.blind ? `
+            <label class="field">
+              <span>What did you guess it was? <em class="optional-tag">optional · the fun part</em></span>
+              <input name="guess" type="text" value="${escapeAttr(draft.guess)}" placeholder="e.g. Eagle Rare? Some wheater?" autocomplete="off">
+            </label>
+          ` : ""}
           <label class="field">
             <span>Context</span>
-            <input name="context" type="text" value="Neat pour">
+            <input name="context" type="text" value="${escapeAttr(draft.context)}">
           </label>
           <div class="tag-picker">
             ${tags.map((tag) => `<button class="${ctx.ui.tastingTags.has(tag) ? "active" : ""}" type="button" data-tag="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`).join("")}
           </div>
           <label class="field">
             <span>Notes</span>
-            <textarea name="note" rows="5" placeholder="What stood out?"></textarea>
+            <textarea name="note" rows="5" placeholder="What stood out?">${escapeHtml(draft.note)}</textarea>
           </label>
           <button class="primary-button" type="submit">Save tasting</button>
         </form>
@@ -3311,11 +3353,14 @@
 
   function renderTasting(ctx, tasting) {
     const bottle = getBottleIndex(ctx).get(tasting.bottleId);
+    const blind = ratingsLogic ? ratingsLogic.isBlindTasting(tasting) : false;
+    const nailed = blind && tasting.guess && ratingsLogic && ratingsLogic.isGuessCorrect(tasting.guess, bottle);
     return `
-      <article class="tasting-card">
+      <article class="tasting-card${blind ? " blind" : ""}">
         <div>
-          <p class="eyebrow">${escapeHtml(tasting.date)}</p>
+          <p class="eyebrow">${escapeHtml(tasting.date)}${blind ? ' · <span class="blind-chip">Blind</span>' : ""}</p>
           <h3>${escapeHtml(bottle ? bottle.name : "Unknown bottle")}</h3>
+          ${tasting.guess ? `<p class="guess-line">${nailed ? '<span class="guess-nailed">🎯 Nailed it</span> — guessed' : "Guessed"} “${escapeHtml(tasting.guess)}”</p>` : ""}
           <p>${escapeHtml(tasting.note || tasting.context)}</p>
           <div class="hero-tags">${(tasting.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
         </div>
@@ -3515,6 +3560,7 @@
           date,
           score: Number(score),
           context: "Blind — Tasting Night",
+          blind: true,
           tags: [],
           note: "Glass " + pour.glass + ", scored blind"
         });

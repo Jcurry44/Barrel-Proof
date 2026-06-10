@@ -74,3 +74,21 @@ test("category matching covers the style axes", () => {
   assert.ok(!ratings.matchesCategory({ whiskeyType: "Bourbon" }, "rye"));
   assert.ok(ratings.matchesCategory({}, "all"));
 });
+
+test("explicit blind flag wins over context text; legacy context still recognized", () => {
+  assert.ok(ratings.isBlindTasting({ blind: true, context: "Neat pour" }));
+  assert.ok(!ratings.isBlindTasting({ blind: false, context: "Blind — Tasting Night" }));
+  assert.ok(ratings.isBlindTasting({ context: "Blind — Tasting Night" }), "legacy Night logs without the flag");
+  assert.ok(!ratings.isBlindTasting({ context: "Neat pour" }));
+});
+
+test("guess matching is generous but not sloppy", () => {
+  const eagle = { name: "Eagle Rare 10 Year", aliases: ["eagle rare", "er10"] };
+  assert.ok(ratings.isGuessCorrect("eagle rare", eagle));
+  assert.ok(ratings.isGuessCorrect("Eagle Rare 10", eagle));
+  assert.ok(ratings.isGuessCorrect("ER10", eagle), "alias match");
+  assert.ok(!ratings.isGuessCorrect("weller", eagle));
+  assert.ok(!ratings.isGuessCorrect("", eagle));
+  assert.ok(!ratings.isGuessCorrect("e", eagle), "too short to count");
+  assert.ok(!ratings.isGuessCorrect("eagle rare", null));
+});

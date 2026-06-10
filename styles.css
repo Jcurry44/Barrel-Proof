@@ -4493,3 +4493,47 @@ button.wiz-line:hover {
   .gap-row { grid-template-columns: 1fr; gap: 10px; }
   .gap-delta { justify-self: start; grid-template-columns: auto auto; gap: 8px; align-items: baseline; }
 }
+
+/* Blind logging: toggle, chips, guess reveal */
+.blind-toggle {
+  display: flex;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.blind-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 169, 216, 0.5);
+  background: rgba(60, 94, 143, 0.22);
+  color: #a9c6e8;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.tasting-card.blind { border-color: rgba(127, 169, 216, 0.3); }
+
+.guess-line {
+  margin: 4px 0 0;
+  color: var(--muted-strong);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+
+.guess-nailed {
+  color: #a9d8b4;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.optional-tag {
+  font-style: normal;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
