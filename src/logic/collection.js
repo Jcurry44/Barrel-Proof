@@ -22,15 +22,21 @@
     {
       match: ["elijah craig barrel", "elijah craig bp", "elijah craig b p"],
       label: "Elijah Craig Barrel Proof",
-      howToId: "Read the batch code on the front label: letter = release of the year (A = Jan, B = May, C = Sept), then the month, then the year — e.g. C923 = 3rd release, Sept 2023. The proof is on the label too.",
+      howToId: "From 2017 on, the batch code is on the front label: letter = release of the year (A = Jan, B = May, C = Sept), then month digit, then year — e.g. C923 = 3rd release, Sept 2023. Pre-2017 bottles carry no code: identify them by the stated proof (no two early batches share one). All pre-2020 batches were 12-year age-stated.",
       batches: [
+        { label: "Batch 1", year: 2013, proof: 134.2 }, { label: "Batch 2", year: 2013, proof: 137.0 }, { label: "Batch 3", year: 2013, proof: 133.2 },
+        { label: "Batch 4", year: 2014, proof: 132.4 }, { label: "Batch 5", year: 2014, proof: 134.8 }, { label: "Batch 6", year: 2014, proof: 140.2 },
+        { label: "Batch 7", year: 2015, proof: 128.0 }, { label: "Batch 8", year: 2015, proof: 139.8 }, { label: "Batch 9", year: 2015, proof: 135.6 },
+        { label: "Batch 10", year: 2016, proof: 138.8 }, { label: "Batch 11", year: 2016, proof: 139.4 }, { label: "Batch 12", year: 2016, proof: 136.0 },
+        { label: "A117", year: 2017, proof: 127.0 }, { label: "B517", year: 2017, proof: 124.2 }, { label: "C917", year: 2017, proof: 131.0 },
+        { label: "A118", year: 2018, proof: 130.6 }, { label: "B518", year: 2018, proof: 133.4 }, { label: "C918", year: 2018, proof: 131.4 },
+        { label: "A119", year: 2019, proof: 135.2 }, { label: "B519", year: 2019, proof: 122.2 }, { label: "C919", year: 2019, proof: 136.8 },
         { label: "A120", year: 2020, proof: 136.6 }, { label: "B520", year: 2020, proof: 127.2 }, { label: "C920", year: 2020, proof: 132.8 },
         { label: "A121", year: 2021, proof: 123.6 }, { label: "B521", year: 2021, proof: 118.2 }, { label: "C921", year: 2021, proof: 120.2 },
         { label: "A122", year: 2022, proof: 120.8 }, { label: "B522", year: 2022, proof: 121.0 }, { label: "C922", year: 2022, proof: 124.8 },
         { label: "A123", year: 2023, proof: 125.6 }, { label: "B523", year: 2023, proof: 124.2 }, { label: "C923", year: 2023, proof: 125.2 },
         { label: "A124", year: 2024, proof: 119.0 }, { label: "B524", year: 2024, proof: 130.6 }, { label: "C924", year: 2024, proof: 129.0 },
-        { label: "A125", year: 2025, proof: 118.2 }, { label: "B525", year: 2025, proof: 126.2 }, { label: "C925", year: 2025, proof: 129.0 },
-        { label: "Batch 1–17 (pre-2020)" }
+        { label: "A125", year: 2025, proof: 118.2 }, { label: "B525", year: 2025, proof: 126.2 }, { label: "C925", year: 2025, proof: 129.0 }
       ]
     },
     {
@@ -172,7 +178,9 @@
       ]
     },
     {
-      match: ["william larue weller", "w l w", "wlw"],
+      // NOTE: do not match "w l w" — it substring-matches "W L Weller ..." and
+      // hijacked every standard W.L. Weller bottle into this BTAC line.
+      match: ["william larue weller", "william larue", "wlw"],
       label: "William Larue Weller",
       howToId: "The year isn't on the front — match the annual proof above, or read the glass laser code. " + BT_LASER_CODE,
       batches: [
@@ -327,8 +335,175 @@
     {
       match: ["parker s heritage", "parkers heritage"],
       label: "Parker's Heritage Collection",
-      howToId: "The edition number and theme are on the front label; each annual edition is a different whiskey.",
-      batches: Array.from({ length: 18 }, (_, i) => "Edition " + (i + 1))
+      howToId: "Every edition is a one-off named whiskey — the type, age, and proof on the label pin the year, and later bottles print the edition number (e.g. “16th Edition”) outright.",
+      batches: [
+        { label: "Ed. 1 · Cask Strength", year: 2007 },
+        { label: "Ed. 2 · 27 yr", year: 2008, proof: 96 },
+        { label: "Ed. 3 · Golden Anniv.", year: 2009, proof: 100 },
+        { label: "Ed. 4 · Wheated 10 yr", year: 2010, proof: 127.8 },
+        { label: "Ed. 5 · Cognac Finish", year: 2011, proof: 100 },
+        { label: "Ed. 6 · Blend of Mashbills", year: 2012 },
+        { label: "Ed. 7 · Promise of Hope", year: 2013, proof: 96 },
+        { label: "Ed. 8 · Wheat Whiskey", year: 2014, proof: 127.4 },
+        { label: "Ed. 9 · Malt 8 yr", year: 2015, proof: 108 },
+        { label: "Ed. 10 · 24 yr BiB", year: 2016, proof: 100 },
+        { label: "Ed. 11 · Single Barrel 11 yr", year: 2017, proof: 122 },
+        { label: "Ed. 12 · Curaçao Finish", year: 2018, proof: 110 },
+        { label: "Ed. 13 · Heavy Char Rye", year: 2019, proof: 105 },
+        { label: "Ed. 14 · Heavy Char Bourbon", year: 2020, proof: 120 },
+        { label: "Ed. 15 · Heavy Char Wheat", year: 2021, proof: 122 },
+        { label: "Ed. 16 · Double Barreled", year: 2022, proof: 132.2 },
+        { label: "Ed. 17 · Rye 10 yr", year: 2023, proof: 128.8 },
+        { label: "Ed. 18 · Cognac Malt 14 yr", year: 2024, proof: 107 },
+        { label: "Ed. 19 · Am. Whiskey Blend", year: 2025, proof: 122.5 }
+      ]
+    },
+    {
+      // Order matters: the rye line must sit before the bourbon line, which
+      // excludes rye/sour mash to claim the rest of the toasted family.
+      matchRe: /michter.*toast.*rye|michter.*rye.*toast/,
+      label: "Michter's Toasted Barrel Rye",
+      howToId: "Bottled at barrel strength, so the exact proof is printed on YOUR bottle (typically 107–112) — releases came in 2017, 2020, and 2023; the batch code on the label gives the year.",
+      batches: [
+        { label: "2017", year: 2017 },
+        { label: "2020", year: 2020 },
+        { label: "2023", year: 2023 }
+      ]
+    },
+    {
+      matchRe: /michter.*toast/,
+      exclude: ["rye", "sour mash"],
+      label: "Michter's Toasted Barrel Bourbon",
+      howToId: "Always 91.4 proof, so the release is identified by the batch code on the bottle (e.g. 24H2817 → 2024).",
+      batches: [
+        { label: "2014", year: 2014, proof: 91.4 },
+        { label: "2015", year: 2015, proof: 91.4 },
+        { label: "2018", year: 2018, proof: 91.4 },
+        { label: "2021", year: 2021, proof: 91.4 },
+        { label: "2024", year: 2024, proof: 91.4 }
+      ]
+    },
+    {
+      // Stave-code names also contain "cask strength", so this sits before the
+      // Cask Strength line.
+      matchRe: /maker.*(wood finish|rc6|se4|fae|brt|bep|heart release|keepers release|stewards)/,
+      label: "Maker's Mark Wood Finishing Series",
+      howToId: "The stave code (RC6, SE4xPR5, FAE-01/02, BRT-01/02, BEP) or release name (The Heart / Keepers / Stewards) is on the front label with the year; these are cask strength, so your bottle's exact proof is in its alcohol statement.",
+      batches: [
+        { label: "RC6", year: 2019, proof: 108.2 },
+        { label: "SE4 x PR5", year: 2020, proof: 110.8 },
+        { label: "FAE-01", year: 2021, proof: 110.6 },
+        { label: "FAE-02", year: 2021, proof: 109.1 },
+        { label: "BRT-01", year: 2022, proof: 109.4 },
+        { label: "BRT-02", year: 2022, proof: 109.4 },
+        { label: "BEP", year: 2023, proof: 110.7 },
+        { label: "The Heart Release", year: 2024, proof: 111.7 },
+        { label: "The Keepers Release", year: 2025, proof: 109.2 },
+        { label: "The Stewards Release", year: 2026 }
+      ]
+    },
+    {
+      matchRe: /maker.*cask/,
+      label: "Maker's Mark Cask Strength",
+      howToId: "Read the “BATCH NO. XX-YY” box on the front label (XX = year, YY = batch that year) and the exact proof in the label's alcohol statement. Batches run 108–114 proof and aren't centrally catalogued, so log your label's code + proof even if it isn't listed here.",
+      batches: [
+        { label: "14-01", year: 2014, proof: 113.2 },
+        { label: "15-01", year: 2015, proof: 111.3 }, { label: "15-02", year: 2015, proof: 111.6 }, { label: "15-03", year: 2015, proof: 111.4 },
+        { label: "15-04", year: 2015, proof: 110.4 }, { label: "15-05", year: 2015, proof: 110.3 },
+        { label: "16-01", year: 2016, proof: 112.2 }, { label: "16-02", year: 2016, proof: 111.5 }, { label: "16-03", year: 2016, proof: 111.6 },
+        { label: "17-01", year: 2017, proof: 110.9 }, { label: "17-02", year: 2017, proof: 110.7 },
+        { label: "18-01", year: 2018, proof: 111.5 },
+        { label: "19-01", year: 2019 }, { label: "19-02", year: 2019, proof: 109.6 },
+        { label: "20-01", year: 2020 }, { label: "20-02", year: 2020, proof: 110.4 }, { label: "20-03", year: 2020 }, { label: "20-05", year: 2020 },
+        { label: "21-01", year: 2021, proof: 110.6 }, { label: "21-02", year: 2021, proof: 110.4 },
+        { label: "22-01", year: 2022 }, { label: "22-02", year: 2022, proof: 110.7 },
+        { label: "23-01", year: 2023, proof: 110.0 }, { label: "23-02", year: 2023, proof: 109.6 }, { label: "23-03", year: 2023 }, { label: "23-05", year: 2023 },
+        { label: "24-01", year: 2024 }, { label: "24-02", year: 2024 },
+        { label: "25-01", year: 2025, proof: 112.6 }
+      ]
+    },
+    {
+      match: ["master s keep", "masters keep"],
+      label: "Wild Turkey Master's Keep",
+      howToId: "Each release has a unique name on the label, so name + proof identifies it outright — only Decades needs the batch number checked (0001 vs 0002, both 104 proof).",
+      batches: [
+        { label: "17 Year", year: 2015, proof: 86.8 },
+        { label: "Decades", year: 2017, proof: 104 },
+        { label: "1894 (AUS only)", year: 2017, proof: 90 },
+        { label: "Revival", year: 2018, proof: 101 },
+        { label: "Cornerstone Rye", year: 2019, proof: 109 },
+        { label: "Bottled in Bond 17 yr", year: 2020, proof: 100 },
+        { label: "One", year: 2021, proof: 101 },
+        { label: "Unforgotten", year: 2022, proof: 105 },
+        { label: "Voyage", year: 2023, proof: 106 },
+        { label: "Triumph Rye", year: 2024, proof: 104 },
+        { label: "Beacon (final)", year: 2025, proof: 118 }
+      ]
+    },
+    {
+      matchRe: /russell.*13/,
+      label: "Russell's Reserve 13 Year",
+      howToId: "Batches 1–5 share identical 114.8-proof labels — tell them apart by the laser code near the bottle's base: LL/JD = B1 (Apr ’21), LL/JL = B2 (Dec ’21), LL/KE = B3 (’22), LL/LC = B4 (Mar ’23), LL/LE = B5 (May ’23). From 2025 the season/year and a unique barrel proof are printed on the label.",
+      batches: [
+        { label: "Batch 1", year: 2021, proof: 114.8 },
+        { label: "Batch 2", year: 2021, proof: 114.8 },
+        { label: "Batch 3", year: 2022, proof: 114.8 },
+        { label: "Batch 4", year: 2023, proof: 114.8 },
+        { label: "Batch 5", year: 2023, proof: 114.8 },
+        { label: "Batch 6", year: 2025, proof: 123.8 },
+        { label: "Batch 7", year: 2026, proof: 121.2 }
+      ]
+    },
+    {
+      matchRe: /russell.*15/,
+      label: "Russell's Reserve 15 Year",
+      howToId: "One release so far — the 2024 debut at 117.2 proof (non-chill filtered, Camp Nelson barrels).",
+      batches: [
+        { label: "2024", year: 2024, proof: 117.2 }
+      ]
+    },
+    {
+      matchAll: ["heaven hill", "heritage"],
+      label: "Heaven Hill Heritage Collection",
+      howToId: "Identified by year + age statement on the label (each edition is a different whiskey); labels also carry production date, rickhouse, and floor.",
+      batches: [
+        { label: "2022 · 17 yr Bourbon", year: 2022, proof: 118.2 },
+        { label: "2023 · 20 yr Corn", year: 2023, proof: 115 },
+        { label: "2024 · 18 yr Bourbon", year: 2024, proof: 120 },
+        { label: "2025 · 19 yr Wheat", year: 2025, proof: 100 },
+        { label: "2026 · 22 yr Bourbon", year: 2026, proof: 129.2 }
+      ]
+    },
+    {
+      match: ["coy hill"],
+      label: "Jack Daniel's Coy Hill High Proof",
+      perBarrel: true,
+      howToId: "Per-barrel and uncut from the top ricks of Coy Hill barrelhouses 8 and 13 — proofs ran 137.4 up to 148.3 (JD's highest ever). Your bottle's neck label shows the barrelhouse, rick, barrel number, bottling date, and its exact proof — log those."
+    },
+    {
+      // The age-stated 10/12/14-year Barrel Proof releases are separate batched
+      // products — keep them out of this per-barrel line.
+      matchAll: ["daniel", "barrel proof"],
+      exclude: ["coy hill", "tanyard", "10yr", "10 yr", "12yr", "12 yr", "14yr", "14 yr"],
+      label: "Jack Daniel's Single Barrel Barrel Proof",
+      perBarrel: true,
+      howToId: "Every bottle is one uncut barrel, typically 125–140 proof. The neck label carries the rick number, barrel number, and bottling date, plus your bottle's exact proof — log those to make yours unique."
+    },
+    {
+      // Must sit after William Larue Weller (BTAC) in this list.
+      match: ["weller"],
+      exclude: ["william larue", "daniel weller"],
+      label: "Weller",
+      howToId: "The expression name and its fixed proof are on the front label. To date a bottle, read the Buffalo Trace laser code. " + BT_LASER_CODE,
+      batches: [
+        { label: "Special Reserve", proof: 90 },
+        { label: "Antique 107", proof: 107 },
+        { label: "12 Year", proof: 90 },
+        { label: "Full Proof", proof: 114 },
+        { label: "C.Y.P.B.", proof: 95 },
+        { label: "Single Barrel", proof: 97 },
+        { label: "Millennium", proof: 99 }
+      ]
     }
   ];
 
