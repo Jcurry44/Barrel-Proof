@@ -6,6 +6,7 @@
   const clubLogic = global.BarrelClub;
   const nightLogic = global.BarrelNight;
   const barcodeLogic = global.BarrelBarcode;
+  const ratingsLogic = global.BarrelRatings;
   const cocktailLogic = global.BarrelCocktails;
   const MIN_SEARCH_CHARS = 2;
   const MAX_EMPTY_RESULTS = 8;
@@ -69,6 +70,8 @@
         tastingTags: new Set(["oak", "caramel"]),
         tastingQuery: "",
         tastingBottleId: "",
+        tastingsView: "log",
+        ratingsCategory: "all",
         nightQuery: "",
         lastScanCode: "",
         scorecardOpen: false,
@@ -187,6 +190,18 @@
 
       if (target.dataset.action === "scan-open") {
         openScanner(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "tastings-view") {
+        ctx.ui.tastingsView = target.dataset.view || "log";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "ratings-cat") {
+        ctx.ui.ratingsCategory = target.dataset.cat || "all";
+        render(ctx);
         return;
       }
 
@@ -3135,6 +3150,20 @@
   }
 
   function renderTastings(ctx) {
+    const view = ctx.ui.tastingsView === "ratings" ? "ratings" : "log";
+    const toggle = `
+      <div class="filter-row tastings-toggle" aria-label="Tastings view">
+        <button class="filter-button${view === "log" ? " active" : ""}" type="button" data-action="tastings-view" data-view="log">Log a pour</button>
+        <button class="filter-button${view === "ratings" ? " active" : ""}" type="button" data-action="tastings-view" data-view="ratings">Your ratings</button>
+      </div>
+    `;
+    if (view === "ratings") {
+      return `<section class="section-stack">${toggle}${renderRatingsView(ctx)}</section>`;
+    }
+    return `<section class="section-stack">${toggle}${renderTastingLog(ctx)}</section>`;
+  }
+
+  function renderTastingLog(ctx) {
     const today = new Date().toISOString().slice(0, 10);
     const tags = ["oak", "caramel", "cherry", "baking spice", "vanilla", "cocoa", "heat", "floral"];
     const picker = getTastingPickerBottles(ctx);
@@ -3188,6 +3217,94 @@
         <section class="tasting-list">
           ${ctx.state.tastings.map((tasting) => renderTasting(ctx, tasting)).join("")}
         </section>
+      </section>
+    `;
+  }
+
+  // Your ratings: per-bottle averages from your pours, sighted vs blind truth,
+  // and leaderboards by style (BiB, cask strength, rye...).
+  function renderRatingsView(ctx) {
+    if (!ratingsLogic) return emptyState("Ratings unavailable.");
+    const ratings = ratingsLogic.bottleRatings(ctx.state);
+    const byId = getBottleIndex(ctx);
+    const ratedIds = Object.keys(ratings).filter((id) => byId.get(id));
+    if (!ratedIds.length) {
+      return emptyState("No ratings yet. Score pours in “Log a pour” — and run a blind flight on the Night tab to start your blind-vs-sighted record.");
+    }
+    const tastings = ctx.state.tastings || [];
+    const pourCount = tastings.filter((t) => Number.isFinite(Number(t.score))).length;
+    const blindCount = tastings.filter((t) => ratingsLogic.isBlindTasting(t) && Number.isFinite(Number(t.score))).length;
+    const gaps = ratingsLogic.blindGaps(ratings, 0.5).filter((gap) => byId.get(gap.bottleId)).slice(0, 8);
+    const biggest = gaps[0];
+    const biggestName = biggest ? byId.get(biggest.bottleId).name : null;
+
+    const cat = ctx.ui.ratingsCategory || "all";
+    const ratedBottles = ratedIds.map((id) => byId.get(id));
+    const board = ratingsLogic.categoryBoard(ratings, ratedBottles, (bottle) => bottleAttrs(bottle), cat, 12);
+
+    return `
+      <div class="insight-grid">
+        ${insight("Bottles rated", ratedIds.length, "from your scored pours")}
+        ${insight("Pours scored", pourCount, blindCount ? blindCount + " of them blind" : "none blind yet")}
+        ${insight("Blind gaps", gaps.length, "sighted vs blind ≥ 0.5")}
+        ${insight("Biggest gap", biggest ? (biggest.delta > 0 ? "+" : "") + biggest.delta.toFixed(1) : "--", biggest ? shortName(biggestName) : "needs blind + sighted pours")}
+      </div>
+
+      <section class="search-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Blind truth</p>
+            <h3>What changes when you can't see the label</h3>
+          </div>
+        </div>
+        ${gaps.length ? `
+          <div class="gap-list">
+            ${gaps.map((gap) => {
+              const bottle = byId.get(gap.bottleId);
+              const over = gap.delta > 0;
+              return `
+                <button class="gap-row" type="button" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf">
+                  <span class="gap-name"><strong>${escapeHtml(bottle.name)}</strong><small>${gap.sightedCount} sighted · ${gap.blindCount} blind</small></span>
+                  <span class="gap-bars">
+                    <span class="gap-bar"><i>Sighted</i><span class="gap-track"><span style="width:${Math.round(gap.sightedAvg * 10)}%"></span></span><b>${gap.sightedAvg.toFixed(1)}</b></span>
+                    <span class="gap-bar blind"><i>Blind</i><span class="gap-track"><span style="width:${Math.round(gap.blindAvg * 10)}%"></span></span><b>${gap.blindAvg.toFixed(1)}</b></span>
+                  </span>
+                  <span class="gap-delta ${over ? "over" : "under"}">${over ? "+" : ""}${gap.delta.toFixed(1)}<small>${over ? "label tax" : "blind star"}</small></span>
+                </button>
+              `;
+            }).join("")}
+          </div>
+          <p class="source-line">Positive = you score it higher when you can see the label. Negative = it overperforms blind.</p>
+        ` : `
+          <p class="source-note">No overlap yet — this needs the same bottle scored both ways. Run a blind flight on the <b>Night</b> tab (your scores log automatically), then rate the same bottles sighted in “Log a pour”.</p>
+        `}
+      </section>
+
+      <section class="search-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Your boards</p>
+            <h3>Best by style</h3>
+          </div>
+        </div>
+        <div class="filter-row">
+          ${ratingsLogic.CATEGORIES.map((category) => `<button class="filter-button${cat === category.key ? " active" : ""}" type="button" data-action="ratings-cat" data-cat="${escapeAttr(category.key)}">${escapeHtml(category.label)}</button>`).join("")}
+        </div>
+        ${board.rows.length ? `
+          <p class="source-line">${board.summary.count} rated ${cat === "all" ? "bottle" : "in this style"}${board.summary.count === 1 ? "" : "s"} · your average ${board.summary.avg ? board.summary.avg.toFixed(1) : "--"}</p>
+          <div class="board-list">
+            ${board.rows.map((row, index) => `
+              <button class="rank-row board-row" type="button" data-open-card="${escapeAttr(row.bottle.id)}" data-card-context="shelf">
+                <span>${index + 1}</span>
+                <div>
+                  <strong>${escapeHtml(row.bottle.name)}</strong>
+                  <small>${row.count} pour${row.count === 1 ? "" : "s"}${row.blindCount ? " · blind " + row.blindAvg.toFixed(1) : ""}${row.delta !== null ? " · " + (row.delta > 0 ? "+" : "") + row.delta.toFixed(1) + " sighted" : ""}</small>
+                </div>
+                <b>${row.avg.toFixed(1)}</b>
+              </button>
+            `).join("")}
+          </div>
+        ` : `<p class="source-note">Nothing rated in this style yet.</p>`}
       </section>
     `;
   }
