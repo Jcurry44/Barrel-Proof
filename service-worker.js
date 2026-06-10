@@ -1,4 +1,4 @@
-const CACHE_NAME = "barrel-proof-shell-v43";
+const CACHE_NAME = "barrel-proof-shell-v44";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -25,6 +25,8 @@ const SHELL_ASSETS = [
   "./src/logic/reviews.js",
   "./src/logic/club.js",
   "./src/logic/night.js",
+  "./src/logic/barcode.js",
+  "./vendor/zxing-library.min.js",
   "./src/logic/cocktails.js",
   "./src/storage/store.js",
   "./src/ui/render.js",

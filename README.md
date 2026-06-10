@@ -395,8 +395,11 @@ observations.
 
 - Real bottle catalog starter data only; no fake friend ratings, fake tasting
   history, or demo barcode/UPC lookup codes are included.
-- Barcode and label scanning are disabled until a real barcode/product or
-  label-recognition source is connected.
+- Barcode scanning is live: ~63% of catalog bottles carry official state-import
+  UPCs, matched across UPC-A/EAN-13 spellings. Unmatched scans can be linked to
+  a bottle by hand and are remembered. Native BarcodeDetector on Chromium;
+  vendored ZXing fallback (vendor/zxing-library.min.js) on iOS Safari. Label
+  (image) recognition remains out of scope.
 - Starter price references are sample values and should be treated as
   placeholders until matched to source imports.
 - Distillery classification covers ~58% of the catalog to a known house; the

@@ -263,7 +263,8 @@
     prices: {},
     club: { friends: [] },
     activeFlight: null,
-    flights: []
+    flights: [],
+    barcodeLinks: {}
   };
 
   global.BarrelData = {

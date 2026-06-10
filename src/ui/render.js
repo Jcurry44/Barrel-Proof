@@ -5,6 +5,7 @@
   const reviewLogic = global.BarrelReviews;
   const clubLogic = global.BarrelClub;
   const nightLogic = global.BarrelNight;
+  const barcodeLogic = global.BarrelBarcode;
   const cocktailLogic = global.BarrelCocktails;
   const MIN_SEARCH_CHARS = 2;
   const MAX_EMPTY_RESULTS = 8;
@@ -69,6 +70,7 @@
         tastingQuery: "",
         tastingBottleId: "",
         nightQuery: "",
+        lastScanCode: "",
         scorecardOpen: false,
         scorecardContext: "store",
         researchCopied: false,
@@ -180,6 +182,32 @@
       if (target.dataset.action === "toggle-store-picks") {
         ctx.ui.storeHidePicks = !(ctx.ui.storeHidePicks !== false);
         render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "scan-open") {
+        openScanner(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "scan-dismiss") {
+        ctx.ui.lastScanCode = "";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "link-scan") {
+        const code = ctx.ui.lastScanCode;
+        const bottleId = target.dataset.bottle;
+        if (code && bottleId) {
+          if (!ctx.state.barcodeLinks || typeof ctx.state.barcodeLinks !== "object") ctx.state.barcodeLinks = {};
+          ctx.state.barcodeLinks[code] = bottleId;
+          ctx.ui.lastScanCode = "";
+          ctx._barcodeIndex = null;
+          persist(ctx);
+          render(ctx);
+          showToast(ctx, "Barcode linked — next scan opens this bottle instantly.");
+        }
         return;
       }
 
@@ -536,7 +564,9 @@
 
     if (global.document && global.document.addEventListener) {
       global.document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && ctx.ui.scorecardOpen) {
+        if (event.key !== "Escape") return;
+        if (ctx._scanner) { closeScanner(ctx); render(ctx); return; }
+        if (ctx.ui.scorecardOpen) {
           ctx.ui.scorecardOpen = false;
           render(ctx);
         }
@@ -639,6 +669,177 @@
       ${renderStorePicksToggle(ctx, filtered)}
       ${filtered.items.map((bottle) => renderMiniBottle(ctx, bottle)).join("")}
     `;
+  }
+
+  // ---------- Barcode scanning ----------
+  // The overlay lives on document.body, outside the render cycle, because a
+  // re-render would destroy the <video> element and kill the camera stream.
+
+  function getBarcodeIndex(ctx) {
+    if (!ctx._barcodeIndex && barcodeLogic) {
+      ctx._barcodeIndex = barcodeLogic.buildIndex(ctx.bottles, ctx.state.barcodeLinks || {});
+    }
+    return ctx._barcodeIndex;
+  }
+
+  function openScanner(ctx) {
+    if (ctx._scanner) return;
+    const doc = global.document;
+    const overlay = doc.createElement("div");
+    overlay.className = "scan-overlay";
+    overlay.innerHTML = `
+      <div class="scan-sheet" role="dialog" aria-modal="true" aria-label="Scan a barcode">
+        <button class="scorecard-close" type="button" data-scan="close" aria-label="Close scanner">&times;</button>
+        <p class="eyebrow">Scan a bottle</p>
+        <div class="scan-video-wrap">
+          <video class="scan-video" muted playsinline></video>
+          <div class="scan-reticle" aria-hidden="true"></div>
+        </div>
+        <p class="scan-status">Starting camera&hellip;</p>
+        <div class="scan-manual">
+          <label class="field"><span>Or type the barcode</span><input class="scan-manual-input" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 088004021344"></label>
+          <button class="ghost-button" type="button" data-scan="manual">Find</button>
+        </div>
+      </div>
+    `;
+    doc.body.appendChild(overlay);
+
+    const scanner = {
+      overlay,
+      video: overlay.querySelector(".scan-video"),
+      status: overlay.querySelector(".scan-status"),
+      stream: null,
+      timer: null,
+      reader: null,
+      lastCode: "",
+      lastAt: 0
+    };
+    ctx._scanner = scanner;
+
+    overlay.addEventListener("click", (event) => {
+      const btn = event.target.closest ? event.target.closest("[data-scan]") : null;
+      if (btn && btn.dataset.scan === "close") { closeScanner(ctx); render(ctx); return; }
+      if (btn && btn.dataset.scan === "manual") {
+        const input = overlay.querySelector(".scan-manual-input");
+        handleScanCode(ctx, input ? input.value : "");
+        return;
+      }
+      if (event.target === overlay) { closeScanner(ctx); render(ctx); }
+    });
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.target.classList && event.target.classList.contains("scan-manual-input")) {
+        handleScanCode(ctx, event.target.value);
+      }
+    });
+
+    startCamera(ctx, scanner);
+  }
+
+  function setScanStatus(ctx, text) {
+    if (ctx._scanner && ctx._scanner.status) ctx._scanner.status.textContent = text;
+  }
+
+  async function startCamera(ctx, scanner) {
+    const onCode = (raw) => {
+      const now = Date.now();
+      if (raw === scanner.lastCode && now - scanner.lastAt < 3000) return;
+      scanner.lastCode = raw;
+      scanner.lastAt = now;
+      handleScanCode(ctx, raw);
+    };
+
+    try {
+      if (typeof global.BarcodeDetector === "function") {
+        let detector;
+        try {
+          detector = new global.BarcodeDetector({ formats: ["upc_a", "upc_e", "ean_13", "ean_8", "code_128", "qr_code"] });
+        } catch (error) {
+          detector = new global.BarcodeDetector();
+        }
+        scanner.stream = await global.navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        scanner.video.srcObject = scanner.stream;
+        await scanner.video.play();
+        setScanStatus(ctx, "Point at the barcode.");
+        scanner.timer = global.setInterval(async () => {
+          try {
+            const found = await detector.detect(scanner.video);
+            if (found && found.length && found[0].rawValue) onCode(found[0].rawValue);
+          } catch (error) { /* per-frame detect errors are normal while focusing */ }
+        }, 260);
+        return;
+      }
+
+      // iOS Safari path: lazy-load the vendored ZXing reader on first scan.
+      setScanStatus(ctx, "Loading scanner…");
+      await loadScannerLibrary();
+      if (!global.ZXing || !ctx._scanner) return;
+      scanner.reader = new global.ZXing.BrowserMultiFormatReader();
+      const onResult = (result) => { if (result && result.getText) onCode(result.getText()); };
+      if (scanner.reader.decodeFromConstraints) {
+        await scanner.reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" } }, audio: false },
+          scanner.video,
+          onResult
+        );
+      } else {
+        await scanner.reader.decodeFromVideoDevice(undefined, scanner.video, onResult);
+      }
+      setScanStatus(ctx, "Point at the barcode.");
+    } catch (error) {
+      setScanStatus(ctx, "Camera unavailable — type the code below instead.");
+    }
+  }
+
+  let scannerLibraryPromise = null;
+  function loadScannerLibrary() {
+    if (global.ZXing) return Promise.resolve();
+    if (!scannerLibraryPromise) {
+      scannerLibraryPromise = new Promise((resolve, reject) => {
+        const script = global.document.createElement("script");
+        script.src = "./vendor/zxing-library.min.js";
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = () => { scannerLibraryPromise = null; reject(new Error("scanner library failed to load")); };
+        global.document.head.appendChild(script);
+      });
+    }
+    return scannerLibraryPromise;
+  }
+
+  function closeScanner(ctx) {
+    const scanner = ctx._scanner;
+    if (!scanner) return;
+    ctx._scanner = null;
+    if (scanner.timer) global.clearInterval(scanner.timer);
+    if (scanner.reader && scanner.reader.reset) { try { scanner.reader.reset(); } catch (error) {} }
+    if (scanner.stream) { for (const track of scanner.stream.getTracks()) track.stop(); }
+    if (scanner.overlay && scanner.overlay.parentNode) scanner.overlay.parentNode.removeChild(scanner.overlay);
+  }
+
+  function handleScanCode(ctx, raw) {
+    if (!barcodeLogic || !barcodeLogic.isLikelyBarcode(raw)) {
+      setScanStatus(ctx, "That doesn't look like a barcode — try again.");
+      return;
+    }
+    const id = barcodeLogic.lookup(getBarcodeIndex(ctx), raw);
+    if (id) {
+      const bottle = getBottleIndex(ctx).get(id);
+      closeScanner(ctx);
+      ctx.state.activeBottleId = id;
+      ctx.ui.scorecardContext = "store";
+      ctx.ui.scorecardOpen = true;
+      ctx.ui.lastScanCode = "";
+      persist(ctx);
+      render(ctx);
+      showToast(ctx, "Scanned: " + (bottle ? bottle.name : "match found"));
+      return;
+    }
+    const digits = String(raw).replace(/\D/g, "");
+    ctx.ui.lastScanCode = digits;
+    setScanStatus(ctx, "No match for " + digits + ". Close the scanner, find the bottle by name, and tap “Link scanned code” on its scorecard — next time it's instant.");
   }
 
   // On phones the cocktail spec stacks below the card list, so a tap updated
@@ -921,6 +1122,7 @@
             ${metric("Friends", result.friendAverage ? result.friendAverage.toFixed(1) : "--")}
           </div>
           ${renderScorecardReviews(ctx, bottle)}
+          ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
           ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
           ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
           ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
@@ -988,9 +1190,10 @@
               <p class="eyebrow">Store Mode</p>
               <h2>Buy window</h2>
             </div>
-            <button class="scan-button" type="button" disabled title="Requires a real barcode or label-recognition source">Scan</button>
+            <button class="scan-button" type="button" data-action="scan-open" title="Scan a bottle's barcode">Scan</button>
           </div>
-          <p class="source-note">Search ${importedCount.toLocaleString("en-US")} confident source-backed records and tap a bottle for its scorecard — your Buy / Consider / Pass call at the price you see. Type at least ${MIN_SEARCH_CHARS} characters.${rawCatalogNote}</p>
+          <p class="source-note">Search ${importedCount.toLocaleString("en-US")} confident source-backed records — or tap Scan and point your camera at the barcode. Tap a bottle for its scorecard: your Buy / Consider / Pass call at the price you see.${rawCatalogNote}</p>
+          ${ctx.ui.lastScanCode ? `<p class="scan-pending">Unmatched barcode <b>${escapeHtml(ctx.ui.lastScanCode)}</b> — open the right bottle's scorecard and tap “Link scanned code”, or <button class="link-inline" type="button" data-action="scan-dismiss">dismiss</button>.</p>` : ""}
           <label class="field">
             <span>Bottle</span>
             <input id="storeSearch" type="search" value="${escapeHtml(ctx.ui.query)}" placeholder="Search by bottle, distillery, profile">
