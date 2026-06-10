@@ -264,7 +264,8 @@
     club: { friends: [] },
     activeFlight: null,
     flights: [],
-    barcodeLinks: {}
+    barcodeLinks: {},
+    killLog: []
   };
 
   global.BarrelData = {

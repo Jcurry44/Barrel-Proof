@@ -4537,3 +4537,39 @@ button.wiz-line:hover {
   text-transform: none;
   letter-spacing: 0;
 }
+
+/* Bottle lifecycle: backups, finished, rebuy */
+.shelf-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.shelf-row-label {
+  color: var(--muted-strong);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.shelf-row.finished { border-color: rgba(127, 169, 216, 0.3); }
+
+.rebuy-ask { color: var(--muted); font-size: 0.85rem; }
+
+.rebuy-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.rebuy-pill.yes { background: rgba(93, 155, 107, 0.16); color: #a9d8b4; border: 1px solid rgba(93, 155, 107, 0.4); }
+.rebuy-pill.no { background: rgba(255, 255, 255, 0.06); color: var(--muted-strong); border: 1px solid var(--line-strong); }
+
+.finish-btn { margin-left: auto; }
+
+.guess-close { color: #f0b46a; font-style: normal; font-weight: 800; }

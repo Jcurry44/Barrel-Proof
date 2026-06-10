@@ -206,6 +206,58 @@
         return;
       }
 
+      if (target.dataset.action === "own-count") {
+        const C = global.BarrelCollection;
+        const bottleId = target.dataset.bottle;
+        if (C && bottleId) {
+          // "Add to shelf" can set owned status without a collection entry, so
+          // the stepper displays max(1, count) — step from what's displayed.
+          const current = Math.max(1, C.ownedCount(ctx.state, bottleId));
+          C.setCount(ctx.state, bottleId, Math.max(1, current + Number(target.dataset.delta)));
+          ctx._forYou = null;
+          persist(ctx);
+          render(ctx);
+        }
+        return;
+      }
+
+      if (target.dataset.action === "finish-bottle") {
+        const C = global.BarrelCollection;
+        const bottleId = target.dataset.bottle;
+        if (!bottleId) return;
+        const count = C ? C.ownedCount(ctx.state, bottleId) : 1;
+        if (C && count > 1) {
+          C.setCount(ctx.state, bottleId, count - 1);
+          persist(ctx);
+          render(ctx);
+          showToast(ctx, "One down — backup promoted. " + (count - 1) + " left on the shelf.");
+          return;
+        }
+        if (C) C.setCount(ctx.state, bottleId, 0);
+        ctx.state.statuses[bottleId] = "finished";
+        if (!Array.isArray(ctx.state.killLog)) ctx.state.killLog = [];
+        ctx.state.killLog.push({ bottleId, date: new Date().toISOString().slice(0, 10), rebuy: null });
+        ctx._forYou = null;
+        persist(ctx);
+        render(ctx);
+        showToast(ctx, "Bottle finished. Your pours and rating stay in the books.");
+        return;
+      }
+
+      if (target.dataset.action === "rebuy") {
+        const bottleId = target.dataset.bottle;
+        const verdict = target.dataset.val === "1";
+        const entry = [...(ctx.state.killLog || [])].reverse().find((item) => item.bottleId === bottleId);
+        if (entry) {
+          entry.rebuy = verdict;
+          ctx._forYou = null;
+          persist(ctx);
+          render(ctx);
+          showToast(ctx, verdict ? "Noted — a rebuy. That's the highest praise there is." : "Noted — one was enough.");
+        }
+        return;
+      }
+
       if (target.dataset.action === "ratings-cat") {
         ctx.ui.ratingsCategory = target.dataset.cat || "all";
         render(ctx);
@@ -680,8 +732,14 @@
       render(ctx);
       if (guess) {
         const bottle = getBottleIndex(ctx).get(tasting.bottleId);
-        const nailed = ratingsLogic && ratingsLogic.isGuessCorrect(guess, bottle);
-        showToast(ctx, nailed ? "Nailed it — you called " + (bottle ? bottle.name : "it") + " blind. 🎯" : "Logged blind. The reveal: " + (bottle ? bottle.name : "saved."));
+        const verdict = getGuessVerdict(ctx, tasting, bottle);
+        if (verdict && verdict.level === "nailed") {
+          showToast(ctx, "Nailed it — you called " + (bottle ? bottle.name : "it") + " blind. 🎯");
+        } else if (verdict && verdict.level === "close") {
+          showToast(ctx, "Close — " + verdict.why + ". It was " + (bottle ? bottle.name : "...") + ".");
+        } else {
+          showToast(ctx, "Logged blind. The reveal: " + (bottle ? bottle.name : "saved."));
+        }
       }
     });
   }
@@ -1249,6 +1307,7 @@
           ${showVerdict && result.reasons.length ? `<div class="reason-block"><h3>Reasons</h3>${result.reasons.map((reason) => `<p>${escapeHtml(reason)}</p>`).join("")}</div>` : ""}
           ${showVerdict && result.cautions.length ? `<div class="reason-block caution"><h3>Cautions</h3>${result.cautions.map((caution) => `<p>${escapeHtml(caution)}</p>`).join("")}</div>` : ""}
           ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}</section>` : ""}
+          ${renderScorecardShelfRow(ctx, bottle)}
           <div class="status-actions">
             ${statusButton(ctx, "owned", "Add to shelf")}
             ${statusButton(ctx, "wishlist", "Wishlist")}
@@ -1270,6 +1329,50 @@
         </section>
       </div>
     `;
+  }
+
+  // Bottle lifecycle on the scorecard: backups (count) while owned, then
+  // "Finished it", then the one question worth asking at that moment — rebuy?
+  function renderScorecardShelfRow(ctx, bottle) {
+    const C = global.BarrelCollection;
+    const status = ctx.state.statuses[bottle.id];
+    if (status === "owned" && C) {
+      const count = Math.max(1, C.ownedCount(ctx.state, bottle.id));
+      return `
+        <div class="shelf-row">
+          <span class="shelf-row-label">On your shelf${count > 1 ? " · " + (count - 1) + " backup" + (count === 2 ? "" : "s") : ""}</span>
+          <span class="wiz-stepper"><button class="step-btn" type="button" data-action="own-count" data-bottle="${escapeAttr(bottle.id)}" data-delta="-1">&minus;</button><b>${count}</b><button class="step-btn" type="button" data-action="own-count" data-bottle="${escapeAttr(bottle.id)}" data-delta="1">+</button></span>
+          <button class="ghost-button finish-btn" type="button" data-action="finish-bottle" data-bottle="${escapeAttr(bottle.id)}">Finished it</button>
+        </div>
+      `;
+    }
+    if (status === "finished") {
+      const kill = [...(ctx.state.killLog || [])].reverse().find((entry) => entry.bottleId === bottle.id);
+      const rebuy = kill ? kill.rebuy : null;
+      return `
+        <div class="shelf-row finished">
+          <span class="shelf-row-label">Finished${kill && kill.date ? " · " + escapeHtml(kill.date) : ""}</span>
+          ${rebuy === null || rebuy === undefined ? `
+            <span class="rebuy-ask">Buy it again?</span>
+            <button class="ghost-button" type="button" data-action="rebuy" data-bottle="${escapeAttr(bottle.id)}" data-val="1">Would rebuy</button>
+            <button class="ghost-button" type="button" data-action="rebuy" data-bottle="${escapeAttr(bottle.id)}" data-val="0">One was enough</button>
+          ` : `
+            <span class="rebuy-pill ${rebuy ? "yes" : "no"}">${rebuy ? "Would rebuy ✓" : "One was enough"}</span>
+          `}
+        </div>
+      `;
+    }
+    return "";
+  }
+
+  function getGuessVerdict(ctx, tasting, bottle) {
+    if (!ratingsLogic || !tasting.guess) return null;
+    const fam = global.BarrelFamilies;
+    const meta = {
+      distillery: fam && fam.classify ? fam.classify(bottle || {}).distillery : "",
+      style: bottleAttrs(bottle || {}).style || ""
+    };
+    return ratingsLogic.guessVerdict(tasting.guess, bottle, meta);
   }
 
   // Always-present review strip on the scorecard: curated, cited sources when we
@@ -3056,6 +3159,7 @@
           ${filterButton(ctx, "wishlist", "Wishlist")}
           ${filterButton(ctx, "passed", "Passed")}
           ${filterButton(ctx, "tasted", "Tasted")}
+          ${filterButton(ctx, "finished", "Finished")}
         </div>
         <div class="shelf-grid">
           ${bottles.map((bottle) => renderShelfCard(ctx, bottle)).join("") || emptyState("No bottles in this view yet.")}
@@ -3354,13 +3458,23 @@
   function renderTasting(ctx, tasting) {
     const bottle = getBottleIndex(ctx).get(tasting.bottleId);
     const blind = ratingsLogic ? ratingsLogic.isBlindTasting(tasting) : false;
-    const nailed = blind && tasting.guess && ratingsLogic && ratingsLogic.isGuessCorrect(tasting.guess, bottle);
+    const verdict = blind ? getGuessVerdict(ctx, tasting, bottle) : null;
+    let guessLine = "";
+    if (tasting.guess) {
+      if (verdict && verdict.level === "nailed") {
+        guessLine = `<p class="guess-line"><span class="guess-nailed">🎯 Nailed it</span> — guessed “${escapeHtml(tasting.guess)}”</p>`;
+      } else if (verdict && verdict.level === "close") {
+        guessLine = `<p class="guess-line"><span class="guess-close">🔥 Close</span> (${escapeHtml(verdict.why)}) — guessed “${escapeHtml(tasting.guess)}”</p>`;
+      } else {
+        guessLine = `<p class="guess-line">Guessed “${escapeHtml(tasting.guess)}”</p>`;
+      }
+    }
     return `
       <article class="tasting-card${blind ? " blind" : ""}">
         <div>
           <p class="eyebrow">${escapeHtml(tasting.date)}${blind ? ' · <span class="blind-chip">Blind</span>' : ""}</p>
           <h3>${escapeHtml(bottle ? bottle.name : "Unknown bottle")}</h3>
-          ${tasting.guess ? `<p class="guess-line">${nailed ? '<span class="guess-nailed">🎯 Nailed it</span> — guessed' : "Guessed"} “${escapeHtml(tasting.guess)}”</p>` : ""}
+          ${guessLine}
           <p>${escapeHtml(tasting.note || tasting.context)}</p>
           <div class="hero-tags">${(tasting.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
         </div>
@@ -4814,6 +4928,7 @@
       wishlist: "Wishlist",
       passed: "Passed",
       tasted: "Tasted",
+      finished: "Finished",
       none: "New"
     };
     return labels[status || "none"] || "New";

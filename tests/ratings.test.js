@@ -92,3 +92,17 @@ test("guess matching is generous but not sloppy", () => {
   assert.ok(!ratings.isGuessCorrect("e", eagle), "too short to count");
   assert.ok(!ratings.isGuessCorrect("eagle rare", null));
 });
+
+test("guessVerdict gives partial credit for the right house or style", () => {
+  const wlw = { name: "William Larue Weller", aliases: ["wlw"] };
+  const meta = { distillery: "Buffalo Trace", style: "Wheated bourbon" };
+  assert.equal(ratings.guessVerdict("william larue weller", wlw, meta).level, "nailed");
+  assert.equal(ratings.guessVerdict("buffalo trace", wlw, meta).level, "close");
+  assert.match(ratings.guessVerdict("buffalo trace", wlw, meta).why, /Buffalo Trace/);
+  assert.equal(ratings.guessVerdict("some kind of wheater", wlw, meta).level, "close");
+  assert.match(ratings.guessVerdict("a wheated bomb", wlw, meta).why, /wheated/i);
+  assert.equal(ratings.guessVerdict("four roses", wlw, meta).level, "miss");
+  assert.equal(ratings.guessVerdict("", wlw, meta).level, "miss");
+  // unknown producer never grants house credit
+  assert.equal(ratings.guessVerdict("unknown producer", { name: "X" }, { distillery: "Unknown producer", style: "" }).level, "miss");
+});

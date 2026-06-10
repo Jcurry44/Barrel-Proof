@@ -26,6 +26,32 @@
     return names.some((name) => name.includes(g) || g.includes(name));
   }
 
+  const STYLE_GUESS_WORDS = {
+    "Wheated bourbon": ["wheated", "wheater", "wheat bomb"],
+    "High-rye bourbon": ["high rye", "high-rye"],
+    "Rye whiskey": ["rye"],
+    "Traditional bourbon": []
+  };
+
+  // Full verdict with partial credit — because guessing the exact bottle out of
+  // a 1,000-bottle shelf is heroic, but calling the right house or style is
+  // still real skill. meta = { distillery, style } from the families engine.
+  function guessVerdict(guess, bottle, meta) {
+    if (isGuessCorrect(guess, bottle)) return { level: "nailed" };
+    const g = normalizeGuessText(guess);
+    if (!g || g.length < 3 || !bottle) return { level: "miss" };
+    const m = meta || {};
+    const distillery = normalizeGuessText(m.distillery);
+    if (distillery && distillery !== "unknown producer" && (g.includes(distillery) || distillery.includes(g)) && g.length >= 4) {
+      return { level: "close", why: "right house — " + m.distillery };
+    }
+    const styleWords = STYLE_GUESS_WORDS[m.style] || [];
+    if (styleWords.some((word) => g.includes(word))) {
+      return { level: "close", why: "right style — " + m.style.toLowerCase() };
+    }
+    return { level: "miss" };
+  }
+
   function round1(value) {
     return Math.round(value * 10) / 10;
   }
@@ -125,6 +151,7 @@
     blindGaps,
     bottleRatings,
     categoryBoard,
+    guessVerdict,
     isBlindTasting,
     isGuessCorrect,
     matchesCategory
