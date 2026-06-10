@@ -1189,7 +1189,7 @@
         ${tabButton(ctx, "tastings", "Tastings")}
         ${tabButton(ctx, "night", "Night")}
         ${tabButton(ctx, "club", "Club")}
-        ${tabButton(ctx, "qa", "QA")}
+        ${tabButton(ctx, "qa", "Data")}
       </nav>
       <main>
         ${ctx.ui.tab === "foryou" ? renderForYou(ctx) : ""}
