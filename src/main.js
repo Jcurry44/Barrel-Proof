@@ -16,10 +16,16 @@
       const ui = window.BarrelUI;
 
       const imported = await loadImportedCatalog();
-      const bottles = mergeBottles(data.bottles, imported.bottles || []);
+      const mergeOutcome = mergeBottles(data.bottles, imported.bottles || []);
+      const bottles = mergeOutcome.bottles;
       attachCuratedMetadata(bottles, curatedData);
       attachReviewMetadata(bottles, reviewData);
       attachBottleImages(bottles);
+
+      // Catalog rebuilds retire ids when records merge; boot-time seed merging
+      // absorbs more. Combine both alias maps so user data saved against an old
+      // id migrates to the surviving bottle instead of orphaning.
+      const idAliases = { ...(imported.bottleAliases || {}), ...mergeOutcome.aliases };
 
       // When the catalog failed to load we fall back to seed bottles only. In that
       // degraded state we must NOT prune the user's statuses against the tiny seed
@@ -27,8 +33,12 @@
       const catalogHealthy = imported.loadMode !== "seed" && (imported.bottles || []).length > 0;
       const state = store.load(data.initialState, {
         bottleIds: bottles.map((bottle) => bottle.id),
-        pruneStatuses: catalogHealthy
+        pruneStatuses: catalogHealthy,
+        idAliases
       });
+      // Persist the alias migration right away so the saved copy carries the
+      // surviving ids even if the user never makes another change this session.
+      if (Object.keys(idAliases).length) store.save(state);
 
       ui.createApp({
         mount: app,
@@ -46,7 +56,7 @@
         palate: data.palate,
         state,
         save: store.save,
-        reset: () => store.reset(data.initialState, { bottleIds: bottles.map((bottle) => bottle.id) })
+        reset: () => store.reset(data.initialState, { bottleIds: bottles.map((bottle) => bottle.id), idAliases })
       });
 
       registerServiceWorker();
@@ -173,17 +183,18 @@
     const catalog = window.BarrelCatalog;
     const byKey = new Map();
     const result = [];
+    const aliases = {};
 
     for (const bottle of baseBottles) {
       const clone = cloneBottle(bottle);
-      addBottle(result, byKey, clone, catalog);
+      addBottle(result, byKey, clone, catalog, aliases);
     }
 
     for (const bottle of importedBottles) {
-      addBottle(result, byKey, cloneBottle(bottle), catalog);
+      addBottle(result, byKey, cloneBottle(bottle), catalog, aliases);
     }
 
-    return result;
+    return { bottles: result, aliases };
   }
 
   function attachReviewMetadata(bottles, reviewData) {
@@ -274,7 +285,7 @@
     };
   }
 
-  function addBottle(result, byKey, bottle, catalog) {
+  function addBottle(result, byKey, bottle, catalog, aliases) {
     const keys = makeBottleKeys(bottle, catalog);
     const existing = keys
       .map((key) => byKey.get(key))
@@ -282,6 +293,7 @@
 
     if (existing) {
       mergeBottleInto(existing, bottle, catalog);
+      if (aliases && bottle.id && bottle.id !== existing.id) aliases[bottle.id] = existing.id;
       for (const key of keys) byKey.set(key, existing);
       return;
     }

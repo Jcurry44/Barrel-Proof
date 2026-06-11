@@ -75,11 +75,20 @@
     return normalizeWhitespace(value)
       .toLowerCase()
       .replace(/\bbrbn\b/g, "bourbon")
+      .replace(/\bbbn\b/g, "bourbon")
+      .replace(/\bbourb\b/g, "bourbon")
       .replace(/\bwky\b/g, "whiskey")
+      .replace(/\bwhsky\b/g, "whiskey")
+      .replace(/\btenn\b/g, "tennessee")
+      .replace(/\bstrt\b/g, "straight")
+      .replace(/\bky\b/g, "kentucky")
+      .replace(/\bksbw\b/g, "kentucky straight bourbon whiskey")
       .replace(/\bus\s*1\b/g, "us1")
       .replace(/\bu\.?s\.?\s*1\b/g, "us1")
       .replace(/\bno\.\s*/g, "no ")
-      .replace(/\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|yo)\s*(?:old)?\b/g, "")
+      .replace(/\b\d+(?:\.\d+)?\s*(?:ml|ltr?|liter|litre)s?\b/g, " ")
+      .replace(/\baged\s+(\d+(?:\.\d+)?)/g, " $1 ")
+      .replace(/\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|yo|y)\b(?:\s*old)?/g, " $1 ")
       .replace(/\b(?:kentucky|straight|bourbon|whisk(?:e)?y|brandy|spirit)\b/g, " ")
       .replace(/\bbottled\s+in\s+bond\b/g, "bib")
       .replace(/\bb\.?i\.?b\.?\b/g, "bib")
@@ -170,6 +179,7 @@
     const leftSize = normalizeSize(left.size) || "";
     const rightSize = normalizeSize(right.size) || "";
     if (leftSize && rightSize && leftSize !== rightSize) return false;
+    if (!hasCompatibleNameAge(left, right)) return false;
     if (hasHighAgeIdentityConflict(left, right)) return false;
     if (hasSharedBarcode(left, right)) {
       return hasCompatibleAge(left, right) && hasCompatibleBarcodeIdentity(left, right);
@@ -257,6 +267,16 @@
     return normalized;
   }
 
+  // Every record consumed by a merge is remembered as a member {id, sourceIds}
+  // so the build can emit an alias map — user data saved against an id that
+  // merges away MUST be remappable to the surviving bottle.
+  function memberOf(record) {
+    return {
+      id: record.id,
+      sourceIds: unique((record.sourceRefs || []).map((ref) => ref.sourceId))
+    };
+  }
+
   function mergeCatalogRecords(records) {
     const byKey = new Map();
     const mergedRecords = [];
@@ -273,13 +293,15 @@
           barcodes: unique(normalized.barcodes || []),
           proofs: uniqueNumbers(normalized.proofs || []),
           sourceRefs: [...(normalized.sourceRefs || [])],
-          prices: [...(normalized.prices || [])]
+          prices: [...(normalized.prices || [])],
+          members: [memberOf(normalized)]
         };
         mergedRecords.push(next);
         for (const key of keys) byKey.set(key, next);
         continue;
       }
 
+      existing.members = [...(existing.members || []), memberOf(normalized)];
       existing.aliases = unique([...(existing.aliases || []), ...(normalized.aliases || [])]);
       existing.barcodes = unique([...(existing.barcodes || []), ...(normalized.barcodes || [])]);
       existing.upc = existing.upc || normalized.upc;
@@ -311,12 +333,40 @@
     return mergedRecords.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // Age-bearing names ("…8 Yr") must also be able to meet their ageless
+  // siblings ("1792 Sweet Wheat"), so we add an age-stripped fallback key.
+  // hasCompatibleNameAge() guards it: two names that BOTH state ages can only
+  // merge when the ages agree, so ER10 can never reach ER17 through this.
+  function extractNameAge(value) {
+    const text = normalizeWhitespace(value).toLowerCase();
+    const aged = text.match(/\baged\s+(\d+(?:\.\d+)?)/);
+    if (aged) return Number(aged[1]);
+    const suffixed = text.match(/\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?|yr|yo|y)\b/);
+    return suffixed ? Number(suffixed[1]) : null;
+  }
+
+  function hasCompatibleNameAge(left, right) {
+    const leftAge = extractNameAge(left.name);
+    const rightAge = extractNameAge(right.name);
+    if (leftAge === null || rightAge === null) return true;
+    return Math.abs(leftAge - rightAge) < 0.01;
+  }
+
+  function makeAgeAgnosticCanonicalIdentityKey(record) {
+    const stripped = String(record.name || "")
+      .replace(/\baged\s+\d+(?:\.\d+)?/gi, " ")
+      .replace(/\b\d+(?:\.\d+)?\s*(?:years?|yrs?|yr|yo|y)\b(?:\s*old)?/gi, " ");
+    const key = makeCanonicalIdentityKey({ ...record, name: stripped });
+    return key ? "ageless|" + key : "";
+  }
+
   function getMergeKeys(record) {
     return unique([
       record.identityKey,
       makeReleaseFamilyIdentityKey(record),
       makeCanonicalIdentityKey(record),
       makeProofAwareCanonicalIdentityKey(record),
+      makeAgeAgnosticCanonicalIdentityKey(record),
       ...getBarcodeValues(record).map((barcode) => "barcode|" + barcode)
     ]);
   }

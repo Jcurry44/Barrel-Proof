@@ -140,6 +140,7 @@ function parseArgs(argv) {
     if (arg === "--input-dir") args.inputDir = argv[++i];
     if (arg === "--out") args.out = argv[++i];
     if (arg === "--index-out") args.indexOut = argv[++i];
+    if (arg === "--prev-index") args.prevIndex = argv[++i];
     if (arg === "--index-js-out") args.indexJsOut = argv[++i];
     if (arg === "--legacy-js-out") args.legacyJsOut = argv[++i];
   }
@@ -171,12 +172,25 @@ function readImportPayload(file) {
 
 function buildAppCatalogPayload(payloads, generatedAt = new Date().toISOString()) {
   const sourceBottles = payloads.flatMap((payload) => payload.bottles || []);
-  const bottles = mergeCatalogRecords(sourceBottles).map(toAppBottle);
+  const merged = mergeCatalogRecords(sourceBottles);
+  const bottles = merged.map(toAppBottle);
   const sources = payloads.map((payload) => ({
     ...(payload.source || {}),
     importFile: payload.importFile || "",
     retrievedAt: payload.retrievedAt || ""
   }));
+
+  // Stronger merging means previously-published bottle ids can disappear.
+  // Emit member-id -> surviving-id aliases so the app can migrate user data
+  // (statuses, tastings, collection, prices) saved against an absorbed id.
+  const bottleAliases = {};
+  merged.forEach((record, index) => {
+    const finalId = bottles[index].id;
+    for (const member of record.members || []) {
+      const memberAppId = getSourceDisplay(member.sourceIds || []).idPrefix + member.id;
+      if (memberAppId !== finalId) bottleAliases[memberAppId] = finalId;
+    }
+  });
 
   return {
     schemaVersion: 1,
@@ -184,6 +198,7 @@ function buildAppCatalogPayload(payloads, generatedAt = new Date().toISOString()
     sources,
     sourceCount: sources.length,
     bottleCount: bottles.length,
+    bottleAliases,
     bottles
   };
 }
@@ -427,6 +442,7 @@ function buildIndexPayload(appPayload) {
     fullBottleCount: appPayload.bottleCount,
     bottleCount: confidentBottles.length,
     sources: appPayload.sources,
+    bottleAliases: appPayload.bottleAliases || {},
     bottles: confidentBottles.map(toIndexBottle)
   };
 }
@@ -684,6 +700,20 @@ async function main() {
   const payloads = inputFiles.map(readImportPayload);
   const appPayload = buildAppCatalogPayload(payloads);
   const indexPayload = buildIndexPayload(appPayload);
+  // The full alias map covers every raw record ever absorbed, but user data can
+  // only reference ids that were VISIBLE in a previously shipped index. Trim the
+  // shipped aliases to that set so the index stays light.
+  if (args.prevIndex) {
+    const prev = JSON.parse(fs.readFileSync(path.resolve(args.prevIndex), "utf8"));
+    const prevIds = new Set((prev.bottles || []).map((bottle) => bottle.id));
+    const newIds = new Set(indexPayload.bottles.map((bottle) => bottle.id));
+    const trimmed = {};
+    for (const [src, dst] of Object.entries(indexPayload.bottleAliases || {})) {
+      if (prevIds.has(src) && !newIds.has(src) && newIds.has(dst)) trimmed[src] = dst;
+    }
+    process.stdout.write("Trimmed shipped aliases " + Object.keys(indexPayload.bottleAliases || {}).length + " -> " + Object.keys(trimmed).length + " (previously visible ids only)\n");
+    indexPayload.bottleAliases = trimmed;
+  }
   writeJsonFile(appPayload, path.resolve(args.out));
   writeJsonFile(indexPayload, path.resolve(args.indexOut), { compact: true });
   writeIndexScript(indexPayload, path.resolve(args.indexJsOut));

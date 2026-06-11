@@ -36,6 +36,7 @@
       killLog: Array.isArray(migrated.killLog) ? migrated.killLog : (fallback.killLog || []),
       identityLinks: migrated.identityLinks && typeof migrated.identityLinks === "object" ? migrated.identityLinks : (fallback.identityLinks || {})
     };
+    remapStateIds(normalized, options.idAliases);
     return validateState(normalized, fallback, options);
   }
 
@@ -78,6 +79,83 @@
       next.identityLinks = next.identityLinks && typeof next.identityLinks === "object" ? next.identityLinks : {};
     }
     return next;
+  }
+
+  // Catalog rebuilds can merge bottle records, retiring ids that user data
+  // points at. idAliases (old id -> surviving id) migrate everything the user
+  // owns: statuses, collection counts, prices, tastings, kills, links.
+  function remapId(aliases, id) {
+    let current = id;
+    for (let hop = 0; hop < 5 && aliases[current]; hop += 1) current = aliases[current];
+    return current;
+  }
+
+  function remapStateIds(state, aliases) {
+    if (!aliases || !Object.keys(aliases).length) return state;
+    const map = (id) => (id ? remapId(aliases, id) : id);
+
+    const statuses = {};
+    for (const id of Object.keys(state.statuses || {})) {
+      const next = map(id);
+      // a value already living on the surviving id always wins over migrants
+      if (id === next) statuses[next] = state.statuses[id];
+      else if (statuses[next] === undefined) statuses[next] = state.statuses[id];
+    }
+    state.statuses = statuses;
+
+    const collection = {};
+    for (const id of Object.keys(state.collection || {})) {
+      const next = map(id);
+      const entry = state.collection[id];
+      if (!collection[next]) {
+        collection[next] = entry;
+      } else {
+        collection[next] = {
+          count: (collection[next].count || 0) + (entry.count || 0),
+          batches: [...new Set([...(collection[next].batches || []), ...(entry.batches || [])])],
+          note: collection[next].note || entry.note || ""
+        };
+      }
+    }
+    state.collection = collection;
+
+    const prices = {};
+    for (const id of Object.keys(state.prices || {})) {
+      const next = map(id);
+      prices[next] = prices[next] ? [...prices[next], ...state.prices[id]] : state.prices[id];
+    }
+    state.prices = prices;
+
+    for (const tasting of state.tastings || []) tasting.bottleId = map(tasting.bottleId);
+    for (const kill of state.killLog || []) kill.bottleId = map(kill.bottleId);
+    for (const matchup of state.matchups || []) {
+      matchup.aId = map(matchup.aId);
+      matchup.bId = map(matchup.bId);
+      if (matchup.winnerId && matchup.winnerId !== "tie") matchup.winnerId = map(matchup.winnerId);
+    }
+
+    const identityLinks = {};
+    for (const id of Object.keys(state.identityLinks || {})) {
+      const from = map(id);
+      const to = map(state.identityLinks[id]);
+      if (from !== to) identityLinks[from] = to;
+    }
+    state.identityLinks = identityLinks;
+
+    for (const code of Object.keys(state.barcodeLinks || {})) {
+      state.barcodeLinks[code] = map(state.barcodeLinks[code]);
+    }
+
+    state.activeBottleId = map(state.activeBottleId);
+    const remapFlight = (flight) => {
+      if (!flight) return;
+      for (const pour of flight.pours || []) pour.bottleId = map(pour.bottleId);
+      if (Array.isArray(flight.bottleIds)) flight.bottleIds = flight.bottleIds.map(map);
+    };
+    remapFlight(state.activeFlight);
+    for (const flight of state.flights || []) remapFlight(flight);
+
+    return state;
   }
 
   function validateState(state, fallback, options = {}) {
@@ -131,6 +209,7 @@
     load,
     migrateState,
     normalizeState,
+    remapStateIds,
     reset,
     save
   };

@@ -1,4 +1,4 @@
-const CACHE_NAME = "barrel-proof-shell-v45";
+const CACHE_NAME = "barrel-proof-shell-v46";
 const SHELL_ASSETS = [
   "./",
   "./index.html",

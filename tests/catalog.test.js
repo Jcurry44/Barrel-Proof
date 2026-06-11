@@ -377,3 +377,33 @@ test("barcode merge does not collapse unrelated private-barrel records", () => {
     "Larceny 92 Proof Private Barrel Buy The Barrel"
   ]);
 });
+
+const catalog = require("../src/logic/catalog.js");
+
+test("name normalization unifies spellings while keeping ages distinct", () => {
+  const norm = catalog.normalizeProductNameForMerge;
+  // every spelling of ER10 lands on one key…
+  assert.equal(norm("Eagle Rare 10 Year Old Bourbon"), norm("Eagle Rare 10Y"));
+  assert.equal(norm("Eagle Rare 10YR Kentucky Straight Bourbon Whiskey 750ml"), norm("Eagle Rare 10Y"));
+  assert.equal(norm("Eagle Rare Aged 10 Years"), norm("Eagle Rare 10Y"));
+  // …and ER17 stays a different bottle
+  assert.notEqual(norm("Eagle Rare 17 Year"), norm("Eagle Rare 10 Year"));
+  // abbreviations expand
+  assert.equal(norm("Knob Creek Bbn 12YR"), norm("Knob Creek Bourbon 12 Year"));
+  assert.equal(norm("Four Roses Small Batch Bourb"), norm("Four Roses Small Batch Bourbon"));
+  // product-name numbers are untouched
+  assert.notEqual(norm("Old Forester 1920"), norm("Old Forester 1910"));
+  assert.ok(norm("Old Forester 1920").includes("1920"));
+});
+
+test("mergeCatalogRecords tracks members so retired ids can be aliased", () => {
+  const records = [
+    { name: "Eagle Rare 10 Year", supplier: "Sazerac", category: "Bourbon", proof: "90", size: ".75L", retailPrice: "40", sourceId: "nc_abc", sourceRecordId: "1" },
+    { name: "Eagle Rare 10Y", supplier: "Sazerac", category: "Bourbon", proof: "90", size: ".75L", retailPrice: "42", sourceId: "ohlq_brand_master", sourceRecordId: "2" }
+  ];
+  const merged = catalog.mergeCatalogRecords(records);
+  assert.equal(merged.length, 1, "spelling variants merge");
+  assert.equal(merged[0].members.length, 2);
+  const memberIds = merged[0].members.map((member) => member.id);
+  assert.ok(memberIds.length === new Set(memberIds).size, "member ids unique");
+});

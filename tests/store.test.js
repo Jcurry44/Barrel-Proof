@@ -84,3 +84,34 @@ test("statuses are preserved when the catalog degrades to seed mode (pruneStatus
   assert.equal(state.statuses["weller-antique-imported"], "wishlist");
   assert.equal(state.statuses["rare-breed"], "owned");
 });
+
+test("idAliases migrate every kind of user data to surviving bottle ids", () => {
+  const aliases = { "old-eagle": "new-eagle", "old-weller": "mid-weller", "mid-weller": "new-weller" };
+  const state = store.normalizeState({
+    schemaVersion: 10,
+    activeBottleId: "old-eagle",
+    statuses: { "old-eagle": "owned", "new-eagle": "wishlist", "old-weller": "tasted" },
+    collection: { "old-eagle": { count: 2, batches: ["B1"], note: "" }, "new-eagle": { count: 1, batches: ["B2"], note: "" } },
+    prices: { "old-eagle": [{ price: 40 }] },
+    tastings: [{ bottleId: "old-eagle", score: 9 }],
+    killLog: [{ bottleId: "old-weller", date: "2026-01-01", rebuy: true }],
+    matchups: [{ aId: "old-eagle", bId: "old-weller", winnerId: "old-eagle" }],
+    identityLinks: { "old-eagle": "new-eagle" },
+    barcodeLinks: { "012": "old-eagle" },
+    flights: [{ pours: [{ glass: "A", bottleId: "old-weller" }], tasters: [] }]
+  }, { schemaVersion: 10, activeBottleId: "new-eagle", storePrice: "", statuses: {}, tastings: [], huntLog: [] }, { idAliases: aliases });
+
+  assert.equal(state.activeBottleId, "new-eagle");
+  assert.equal(state.statuses["new-eagle"], "wishlist", "existing target value wins");
+  assert.equal(state.statuses["new-weller"], "tasted", "chained alias resolves twice");
+  assert.equal(state.statuses["old-eagle"], undefined);
+  assert.equal(state.collection["new-eagle"].count, 3, "counts merge");
+  assert.deepEqual(state.collection["new-eagle"].batches.sort(), ["B1", "B2"]);
+  assert.equal(state.prices["new-eagle"].length, 1);
+  assert.equal(state.tastings[0].bottleId, "new-eagle");
+  assert.equal(state.killLog[0].bottleId, "new-weller");
+  assert.equal(state.matchups[0].winnerId, "new-eagle");
+  assert.deepEqual(state.identityLinks, {}, "self-links dropped after remap");
+  assert.equal(state.barcodeLinks["012"], "new-eagle");
+  assert.equal(state.flights[0].pours[0].bottleId, "new-weller");
+});
