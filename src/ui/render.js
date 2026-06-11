@@ -275,6 +275,38 @@
         return;
       }
 
+      if (target.dataset.action === "quick-open") {
+        ctx.ui.tab = "shelf";
+        ctx.ui.shelfMode = "quick";
+        ctx.ui.quickQuery = "";
+        ctx.ui.quickAdded = 0;
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "quick-done") {
+        ctx.ui.shelfMode = "view";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "quick-own") {
+        const C = global.BarrelCollection;
+        const bottleId = target.dataset.bottle;
+        if (C && bottleId) {
+          C.setCount(ctx.state, bottleId, C.ownedCount(ctx.state, bottleId) + 1);
+          ctx.ui.quickAdded = (ctx.ui.quickAdded || 0) + 1;
+          ctx._forYou = null;
+          persist(ctx);
+          // Update only the results + counter so the search box keeps focus.
+          const region = ctx.mount.querySelector(".quickadd-results");
+          if (region) region.innerHTML = renderQuickResults(ctx);
+          const counter = ctx.mount.querySelector("#quickCount");
+          if (counter) counter.textContent = ctx.ui.quickAdded;
+        }
+        return;
+      }
+
       if (target.dataset.action === "own-count") {
         const C = global.BarrelCollection;
         const bottleId = target.dataset.bottle;
@@ -780,6 +812,10 @@
       if (target.id === "identitySearch") {
         ctx.ui.identityQuery = target.value;
         scheduleRender(ctx, 120);
+      }
+      if (target.id === "quickAdd") {
+        ctx.ui.quickQuery = target.value;
+        scheduleQuickResults(ctx);
       }
 
       if (target.dataset && target.dataset.nightGlass) {
@@ -2245,7 +2281,7 @@
           <span class="mini-tags">
             <span>${escapeHtml(confidenceLabel(bottle) || bottle.rarity)}</span>
             <span>${statusLabel(status)}</span>
-            <span>${friendAvg ? friendAvg.toFixed(1) + " club" : "no club score"}</span>
+            ${bottle._variantCount > 1 ? `<span class="variant-chip">${bottle._variantCount} listings</span>` : `<span>${friendAvg ? friendAvg.toFixed(1) + " club" : "no club score"}</span>`}
           </span>
         </span>
       </button>
@@ -3263,8 +3299,69 @@
     `;
   }
 
+  // Quick add: the fastest way to enter a big collection. Type a few letters,
+  // tap the bottle, keep typing — the input never loses focus, every tap is one
+  // bottle owned (tap again for backups).
+  function renderQuickAdd(ctx) {
+    return `
+      <section class="section-stack">
+        <section class="search-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Quick add</p>
+              <h2>Type a little, tap a lot</h2>
+            </div>
+            <button class="primary-button" type="button" data-action="quick-done">Done</button>
+          </div>
+          <p class="source-note">Search and tap to add to your shelf — the search stays put so you can rip through a cabinet. Tap again for a backup. <b id="quickCount">${ctx.ui.quickAdded || 0}</b> added this session.</p>
+          <label class="field"><span>Bottle</span><input id="quickAdd" type="search" value="${escapeAttr(ctx.ui.quickQuery || "")}" placeholder="e.g. rare breed, weller, ecbp…" autocomplete="off" autofocus></label>
+        </section>
+        <section class="quickadd-results">${renderQuickResults(ctx)}</section>
+      </section>
+    `;
+  }
+
+  function renderQuickResults(ctx) {
+    const C = global.BarrelCollection;
+    const query = (ctx.ui.quickQuery || "").trim().toLowerCase();
+    if (query.length < MIN_SEARCH_CHARS) {
+      return `<p class="result-summary">Start typing — two letters is enough.</p>`;
+    }
+    const raw = [];
+    for (const bottle of ctx.bottles) {
+      if (raw.length >= 200) break;
+      if (bottle._searchText.includes(query)) raw.push(bottle);
+    }
+    const collapsed = collapseVariants(ctx, raw);
+    collapsed.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
+    const rows = collapsed.slice(0, 30);
+    if (!rows.length) return `<p class="result-summary">No matches — try fewer letters.</p>`;
+    return rows.map((bottle) => {
+      const count = C ? C.ownedCount(ctx.state, bottle.id) : 0;
+      const owned = count > 0 || ctx.state.statuses[bottle.id] === "owned";
+      return `
+        <button class="night-result quick-row${owned ? " owned" : ""}" type="button" data-action="quick-own" data-bottle="${escapeAttr(bottle.id)}">
+          <strong>${escapeHtml(bottle.name)}</strong>
+          <small>${escapeHtml(getBottleMaker(bottle))}${bottle._variantCount > 1 ? " · " + bottle._variantCount + " listings" : ""}</small>
+          <span class="quick-badge">${owned ? "✓" + (Math.max(1, count) > 1 ? " ×" + count : "") : "+"}</span>
+        </button>
+      `;
+    }).join("");
+  }
+
+  function scheduleQuickResults(ctx) {
+    if (ctx.ui.quickTimer) global.clearTimeout(ctx.ui.quickTimer);
+    ctx.ui.quickTimer = global.setTimeout(() => {
+      ctx.ui.quickTimer = null;
+      const region = ctx.mount.querySelector ? ctx.mount.querySelector(".quickadd-results") : null;
+      if (region) region.innerHTML = renderQuickResults(ctx);
+      else render(ctx);
+    }, 110);
+  }
+
   function renderShelf(ctx) {
     if (ctx.ui.shelfMode === "wizard") return renderWizard(ctx);
+    if (ctx.ui.shelfMode === "quick") return renderQuickAdd(ctx);
     const bottles = ctx.bottles.filter((bottle) => {
       const status = ctx.state.statuses[bottle.id] || "none";
       return ctx.ui.shelfFilter === "all" ? status !== "none" : status === ctx.ui.shelfFilter;
@@ -3288,7 +3385,10 @@
             <p class="eyebrow">Your collection</p>
             <strong>${totals.bottles}${totals.bottles ? " bottle" + (totals.bottles === 1 ? "" : "s") + " · " + totals.lines + " line" + (totals.lines === 1 ? "" : "s") : " bottles logged yet"}</strong>
           </div>
-          <button class="primary-button shelf-build-btn" type="button" data-wiz="open">${totals.bottles ? "Add bottles" : "Build your shelf"}</button>
+          <span class="shelf-cta-actions">
+            <button class="ghost-button" type="button" data-action="quick-open">Quick add</button>
+            <button class="primary-button shelf-build-btn" type="button" data-wiz="open">${totals.bottles ? "Browse houses" : "Build your shelf"}</button>
+          </span>
         </div>
         <div class="insight-grid">
           ${insight("Shelf value", ownedValues.length ? rec.money(ownedValue) : "n/a", unknownOwnedValue ? unknownOwnedValue + " owned without value" : "fair value estimate")}
@@ -4836,13 +4936,13 @@
 
     const query = (ctx.ui.tastingQuery || "").trim().toLowerCase();
     if (query.length >= MIN_SEARCH_CHARS) {
-      let added = 0;
+      const raw = [];
       for (const bottle of ctx.bottles) {
-        if (added >= 40) break;
-        if (bottle._searchText.includes(query)) {
-          byId.set(bottle.id, bottle);
-          added += 1;
-        }
+        if (raw.length >= 200) break;
+        if (bottle._searchText.includes(query)) raw.push(bottle);
+      }
+      for (const bottle of collapseVariants(ctx, raw).slice(0, 40)) {
+        byId.set(bottle.id, bottle);
       }
     } else {
       for (const [id, status] of Object.entries(ctx.state.statuses || {})) {
@@ -4910,6 +5010,49 @@
     return true;
   }
 
+  // ---- Variant collapsing: one row per real product ------------------------
+  // The catalog carries many state-by-state spellings of the same bottle
+  // ("Eagle Rare 10Y", "Eagle Rare 10YR Bourbon", ...). Display surfaces group
+  // them by the collection lineKey and show the best representative.
+  function bottleLineKey(ctx, bottle) {
+    if (!bottle._lineKey) {
+      const C = global.BarrelCollection;
+      bottle._lineKey = C && C.lineKey ? C.lineKey(bottle) : bottle.id;
+    }
+    return bottle._lineKey;
+  }
+
+  function variantRepScore(bottle) {
+    let score = 0;
+    if (bottle.curated) score += 100;
+    if (bottle.catalogConfidence === "verified") score += 50;
+    else if (bottle.catalogConfidence === "cross-checked") score += 40;
+    else if (bottle.catalogConfidence === "priced-source") score += 20;
+    if (!hasSourceRefs(bottle)) score += 30; // seed bottles have the rich curated copy
+    if (Number.isFinite(bottle.msrp)) score += 15;
+    return score - String(bottle.name || "").length / 200;
+  }
+
+  function collapseVariants(ctx, bottles) {
+    const groups = new Map();
+    for (const bottle of bottles) {
+      const key = bottleLineKey(ctx, bottle);
+      const group = groups.get(key);
+      if (!group) {
+        groups.set(key, { bottle, count: 1 });
+      } else {
+        group.count += 1;
+        if (variantRepScore(bottle) > variantRepScore(group.bottle)) group.bottle = bottle;
+      }
+    }
+    const reps = [];
+    for (const group of groups.values()) {
+      group.bottle._variantCount = group.count;
+      reps.push(group.bottle);
+    }
+    return reps;
+  }
+
   // A genuine store / private / barrel-select pick (the clutter) — NOT a flagship
   // single-barrel product like Blanton's, Four Roses, or Russell's Reserve.
   function isStorePick(bottle) {
@@ -4937,14 +5080,16 @@
       totalMatches += 1;
       matches.push(bottle);
     }
+    const collapsed = collapseVariants(ctx, matches);
     if (hasQuery) {
-      matches.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
+      collapsed.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
     } else {
-      matches.sort((left, right) => (Number(right.hypeIndex) || 0) - (Number(left.hypeIndex) || 0));
+      collapsed.sort((left, right) => (Number(right.hypeIndex) || 0) - (Number(left.hypeIndex) || 0));
     }
     return {
-      items: matches.slice(0, MAX_SEARCH_RESULTS),
-      totalMatches,
+      items: collapsed.slice(0, MAX_SEARCH_RESULTS),
+      totalMatches: collapsed.length,
+      listingCount: totalMatches,
       hiddenPicks,
       mode: hasQuery ? "search" : "filter",
       query
@@ -5025,7 +5170,8 @@
       return `<p class="result-summary">${info.totalMatches.toLocaleString("en-US")} bottle${info.totalMatches === 1 ? "" : "s"} match your filters${capped ? "; showing the top " + info.items.length + " by hype" : ""}.</p>`;
     }
     const capped = info.totalMatches > info.items.length;
-    return `<p class="result-summary">${info.totalMatches.toLocaleString("en-US")} match${info.totalMatches === 1 ? "" : "es"}${capped ? "; showing the best " + info.items.length : ""}.</p>`;
+    const listingNote = info.listingCount > info.totalMatches ? " (" + info.listingCount.toLocaleString("en-US") + " listings collapsed)" : "";
+    return `<p class="result-summary">${info.totalMatches.toLocaleString("en-US")} bottle${info.totalMatches === 1 ? "" : "s"}${listingNote}${capped ? "; showing the best " + info.items.length : ""}.</p>`;
   }
 
   function buildBottleSearchText(bottle) {

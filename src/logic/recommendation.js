@@ -441,6 +441,22 @@
     };
   }
 
+  // Allocated-bottle economics: a grail at (or anywhere near) retail is a buy,
+  // full stop — these bottles trade at multiples of MSRP and may never be seen
+  // at this price again. Owning one already makes a retail backup BETTER, not
+  // worse. No score blend is allowed to talk someone out of a Handy at $70.
+  function isGrailSteal(bottle, shelfPrice) {
+    const price = Number(shelfPrice);
+    if (!Number.isFinite(price) || price <= 0) return false;
+    const allocated = bottle.rarity === "Unicorn" || bottle.rarity === "Allocated" || Number(bottle.hypeIndex) >= 85;
+    if (!allocated) return false;
+    const msrp = Number(bottle.msrp);
+    const fair = Number(bottle.fairPrice);
+    if (Number.isFinite(msrp) && price <= msrp * 1.15) return true;
+    if (Number.isFinite(fair) && Number.isFinite(msrp) && fair >= msrp * 1.5 && price <= fair * 0.7) return true;
+    return false;
+  }
+
   function scoreBottleDecision(input) {
     const bottle = input.bottle;
     const palate = input.palate || {};
@@ -452,8 +468,9 @@
     const friendAverage = getFriendAverage(bottle.id, friends);
     const friendScore = friendAverage ? clamp((friendAverage - 6.5) / 3, 0, 1) : 0.5;
     const reviewSignal = getReviewSignal(bottle);
-    const ownedPenalty = status === "owned" ? 0.16 : 0;
-    const passedPenalty = status === "passed" ? 0.08 : 0;
+    const grailSteal = isGrailSteal(bottle, shelfPrice);
+    const ownedPenalty = status === "owned" && !grailSteal ? 0.16 : 0;
+    const passedPenalty = status === "passed" && !grailSteal ? 0.08 : 0;
     const rarityBoost = bottle.rarity === "Unicorn" || bottle.rarity === "Allocated" ? 0.05 : 0;
     const hypePenalty = bottle.hypeIndex > 88 && price.ratioToFair > 1.15 ? 0.12 : 0;
 
@@ -474,12 +491,26 @@
       score = Math.min(score, 0.46);
     }
 
+    // Grail at retail overrides everything: palate fit, friend signal, and
+    // ownership are noise next to a once-a-year bottle at store price.
+    if (grailSteal) {
+      score = Math.max(score, 0.93);
+    }
+
     let decision = "Consider";
     if (score >= 0.72) decision = "Buy";
     if (score < 0.49) decision = "Pass";
 
     const reasons = [];
     const cautions = [];
+
+    if (grailSteal) {
+      const msrpText = Number.isFinite(Number(bottle.msrp)) ? " (MSRP " + money(Number(bottle.msrp)) + ")" : "";
+      reasons.push("Allocated-bottle economics: " + money(Number(shelfPrice)) + " on a bottle that trades far above retail" + msrpText + ". You may not see this price again — buy it.");
+      if (status === "owned") {
+        reasons.push("You already own one — a backup at this price is the best deal in bourbon, not a reason to pass.");
+      }
+    }
 
     reasons.push(price.message);
 
@@ -495,7 +526,7 @@
       cautions.push("Friend signal is mixed.");
     }
 
-    if (status === "owned") {
+    if (status === "owned" && !grailSteal) {
       cautions.push("You already own this. It needs to be backup-bottle pricing.");
     }
 
@@ -587,6 +618,7 @@
     getSecondaryMarketInfo,
     getSourceRetailPrice,
     money,
+    isGrailSteal,
     rankBottlesForStore,
     scoreBottleDecision
   };

@@ -238,3 +238,43 @@ test("decision can pass on a great bottle at a bad price", () => {
   assert.equal(decision.decision, "Pass");
   assert.ok(decision.cautions.some((caution) => caution.includes("Hype")));
 });
+
+const rec = require("../src/logic/recommendation.js");
+
+test("NEVER tells you to pass a grail at retail because you own one (the Handy regression)", () => {
+  // Thomas H. Handy: Unicorn, MSRP $150 — offered at $70 while already owned.
+  const handy = {
+    id: "thomas-h-handy-2025",
+    name: "Thomas H. Handy Sazerac Rye",
+    rarity: "Unicorn",
+    msrp: 150,
+    proof: 129.8,
+    hypeIndex: 95,
+    profile: ["baking spice", "mint", "oak"]
+  };
+  const result = rec.scoreBottleDecision({
+    bottle: handy,
+    shelfPrice: 70,
+    palate: { proofPreference: 105, favoriteProfiles: ["cherry", "oak"] },
+    friends: [],
+    status: "owned"
+  });
+  assert.equal(result.decision, "Buy");
+  assert.ok(result.confidence >= 90, "confidence should be emphatic, got " + result.confidence);
+  assert.ok(result.reasons.some((reason) => /allocated-bottle economics/i.test(reason)), "leads with the economics");
+  assert.ok(result.reasons.some((reason) => /backup at this price/i.test(reason)), "ownership framed as a bonus");
+  assert.ok(!result.cautions.some((caution) => /backup-bottle pricing/i.test(caution)), "no ownership scolding on a steal");
+});
+
+test("grail override does NOT fire at scalper prices or on shelf bottles", () => {
+  const handy = { id: "handy", name: "Thomas H. Handy", rarity: "Unicorn", msrp: 150, hypeIndex: 95 };
+  assert.equal(rec.isGrailSteal(handy, 70), true);
+  assert.equal(rec.isGrailSteal(handy, 165), true);   // ~MSRP still a steal for BTAC
+  assert.equal(rec.isGrailSteal(handy, 600), false);  // scalper territory — judge normally
+  assert.equal(rec.isGrailSteal({ name: "Buffalo Trace", rarity: "Findable", msrp: 30 }, 25), false);
+  const scalped = rec.scoreBottleDecision({ bottle: handy, shelfPrice: 900, palate: {}, friends: [], status: "none" });
+  assert.notEqual(scalped.decision, "Buy", "a $900 Handy is not an auto-buy");
+  // owned penalty still applies to ordinary bottles
+  const ordinary = rec.scoreBottleDecision({ bottle: { name: "Buffalo Trace", rarity: "Findable", msrp: 30, fairPrice: 32 }, shelfPrice: 30, palate: {}, friends: [], status: "owned" });
+  assert.ok(ordinary.cautions.some((caution) => /backup-bottle pricing/i.test(caution)), "ordinary bottles keep the backup caution");
+});

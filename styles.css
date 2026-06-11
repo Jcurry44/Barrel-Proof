@@ -4640,3 +4640,26 @@ button.wiz-line:hover {
 .identity-panel h3 { margin: 0; }
 .night-history-actions { display: inline-flex; align-items: center; gap: 10px; }
 .share-mini { padding: 4px 10px; font-size: 0.74rem; }
+
+/* Quick add + variant chips */
+.shelf-cta-actions { display: flex; gap: 10px; align-items: center; }
+.quickadd-results { display: grid; gap: 6px; }
+.quick-row { position: relative; padding-right: 64px; }
+.quick-row .quick-badge {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted-strong);
+  font-weight: 900;
+}
+.quick-row.owned { border-color: rgba(112, 151, 104, 0.5); }
+.quick-row.owned .quick-badge { background: rgba(112, 151, 104, 0.2); color: #cfe4c5; }
+.variant-chip { color: var(--brass-strong) !important; }
