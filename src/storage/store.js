@@ -6,7 +6,7 @@
   }
 })(typeof window !== "undefined" ? window : globalThis, function createStore(global) {
   const STORAGE_KEY = "barrel-proof-state-v1";
-  const CURRENT_VERSION = 10;
+  const CURRENT_VERSION = 11;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -34,7 +34,8 @@
       flights: Array.isArray(migrated.flights) ? migrated.flights : (fallback.flights || []),
       barcodeLinks: migrated.barcodeLinks && typeof migrated.barcodeLinks === "object" ? migrated.barcodeLinks : (fallback.barcodeLinks || {}),
       killLog: Array.isArray(migrated.killLog) ? migrated.killLog : (fallback.killLog || []),
-      identityLinks: migrated.identityLinks && typeof migrated.identityLinks === "object" ? migrated.identityLinks : (fallback.identityLinks || {})
+      identityLinks: migrated.identityLinks && typeof migrated.identityLinks === "object" ? migrated.identityLinks : (fallback.identityLinks || {}),
+      profile: normalizeProfileShape(migrated.profile, fallback.profile)
     };
     remapStateIds(normalized, options.idAliases);
     return validateState(normalized, fallback, options);
@@ -78,7 +79,23 @@
     if (version < 10) {
       next.identityLinks = next.identityLinks && typeof next.identityLinks === "object" ? next.identityLinks : {};
     }
+    if (version < 11) {
+      // Per-device profile (name, proof comfort, flavor leanings) replaces the
+      // hard-coded palate. Existing users see the first-run sheet once.
+      next.profile = normalizeProfileShape(next.profile, null);
+    }
     return next;
+  }
+
+  function normalizeProfileShape(value, fallback) {
+    const base = fallback && typeof fallback === "object" ? fallback : { name: "", proofComfort: "", flavors: [], onboardedAt: "" };
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      name: typeof input.name === "string" ? input.name : (base.name || ""),
+      proofComfort: typeof input.proofComfort === "string" ? input.proofComfort : (base.proofComfort || ""),
+      flavors: Array.isArray(input.flavors) ? input.flavors.filter((flavor) => typeof flavor === "string") : (Array.isArray(base.flavors) ? base.flavors : []),
+      onboardedAt: typeof input.onboardedAt === "string" ? input.onboardedAt : (base.onboardedAt || "")
+    };
   }
 
   // Catalog rebuilds can merge bottle records, retiring ids that user data

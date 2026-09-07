@@ -154,3 +154,35 @@ test("round-4 lines route correctly (Rare Character, KC aged, 1792 12, OF 117)",
   assert.equal(route("Old Forester 117 Series High Angels Share"), "Old Forester 117 Series");
   assert.equal(route("Stellum Bourb Equinox Blend #1 (117.26p Black Label)"), "(none)");
 });
+
+test("productKey keeps expressions apart for search while merging spellings, sizes, picks, and batch codes", () => {
+  const key = (name) => C.productKey({ name });
+  // Every Weller expression is its own product (the wizard's lineKey folds them into one line on purpose).
+  const wellers = ["Weller Antique 107", "Weller 12Y", "Weller Special Reserve 1.75L", "W L Weller Full Proof Straight Bourbon", "W L Weller CYPB Straight Bourbon"];
+  assert.equal(new Set(wellers.map(key)).size, wellers.length, "five Weller expressions stay distinct");
+  assert.equal(C.lineKey({ name: "Weller Antique 107" }), C.lineKey({ name: "Weller 12Y" }), "wizard line still groups the family");
+  // Spellings of one product merge.
+  assert.equal(key("Weller Antique 107"), key("Old Weller Antique Kentucky Straight Bourbon 107 Prf (Buy Entire Barrel)"));
+  assert.equal(key("Weller Antique 107"), key("W L Weller Antique 107 Straight Wheated Bourbon"));
+  assert.equal(key("Old Weller 107"), key("Weller Antique 107"), "OWA shorthand");
+  assert.equal(key("Weller Antique"), key("Weller Antique 107"), "Antique without its proof");
+  assert.equal(key("Eagle Rare Single Barrel Bourbon"), key("Eagle Rare 10 Year"), "unaged Eagle Rare is the 10 year");
+  assert.notEqual(key("Eagle Rare 17 Year"), key("Eagle Rare 10 Year"));
+  assert.equal(key("Weller 12Y"), key("W.L. Weller 12 Year Old Kentucky Straight Bourbon"));
+  assert.equal(key("Blanton's Single Barrel Straight Bourbon"), key("Blantons Bourbon"));
+  assert.equal(key("Blanton's Gold Edition Straight Bourbon Whiskey"), key("Blanton's Gold Straight Bourbon"));
+  assert.notEqual(key("Blanton's Gold Straight Bourbon"), key("Blantons Bourbon"), "Gold is a different product");
+  assert.equal(key("Eagle Rare 10 Year"), key("Eagle Rare Single Barrel 10 Year Kentucky Straight Bourbon Whiskey"));
+  assert.equal(key("Eagle Rare 10 Year"), key("Eagle Rare 10yr S/B Whiskey (Hal)"));
+  assert.notEqual(key("Eagle Rare 10 Year"), key("Eagle Rare 17 Year"), "ages stay distinct");
+  assert.equal(key("Elijah Craig Barrel Proof A124"), key("Elijah Craig Barrel Proof Batch C923"));
+  assert.notEqual(key("Elijah Craig Barrel Proof"), key("Elijah Craig Small Batch Bourbon"));
+  assert.notEqual(key("Four Roses Single Barrel Straight Bourbon"), key("Four Roses Yellow Label Bourbon"), "single barrel stays part of Four Roses identity");
+  assert.equal(key("Old Forester 1920 Prohibition Style"), key("Old Forester 1920 Whisky Row Series"));
+  assert.notEqual(key("Old Forester 1920 Prohibition Style"), key("Old Forester 1910"), "19xx product names are not stripped as years");
+  assert.equal(key("Russell's Reserve 10 Year Old"), key("Russells Reserve 10 Year Old Bourbon 750ml"));
+  assert.equal(key("Michter's US*1 Bourbon"), key("Michters US1 Kentucky Straight Bourbon"));
+  assert.equal(key("1792 Aged Twelve Years 2024"), key("1792 12 Year"));
+  assert.equal(key("Wild Turkey Rare Breed Kentucky Straight Bourbon Whiskey"), key("Wild Turkey Rare Breed"));
+  assert.notEqual(key("Wild Turkey Rare Breed"), key("Wild Turkey Rare Breed Rye Whiskey"));
+});

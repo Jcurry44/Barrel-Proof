@@ -5,8 +5,12 @@
 /data/raw/
 /src/data/imported-catalog.json
 
+# Local server output
+*.log
+
 # Tooling / OS
 .claude/
+node_modules/
 __pycache__/
 *.pyc
 .DS_Store

@@ -1,11 +1,17 @@
 {
   "name": "Barrel Proof",
   "short_name": "Barrel Proof",
-  "start_url": "./index.html",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "description": "A premium bourbon decision companion: connoisseur-grade recommendations, a tap-don't-type collection builder, blind-tasting Showdown, and distillery analytics.",
+  "description": "A private bourbon companion: a tap-don't-type shelf, tastings with a flavor wheel, blind flights and Showdowns with friends, and every bottle's story.",
   "background_color": "#120d0b",
   "theme_color": "#120d0b",
+  "categories": [
+    "food",
+    "lifestyle"
+  ],
   "icons": [
     {
       "src": "./icon.svg",

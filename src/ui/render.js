@@ -8,7 +8,24 @@
   const barcodeLogic = global.BarrelBarcode;
   const ratingsLogic = global.BarrelRatings;
   const cocktailLogic = global.BarrelCocktails;
+  const profileLogic = global.BarrelProfile;
   const MIN_SEARCH_CHARS = 2;
+  // Every destination in the app. `primary` tabs live on the phone's bottom bar;
+  // everything else sits behind "More". Desktop shows all of them in the top
+  // tab bar. `dev` tabs only appear when data tools are switched on.
+  const TABS = [
+    { id: "store", label: "Bottles", short: "Bottles", icon: "tag", primary: true, blurb: "Search or scan any bottle: its facts, your history, the room's take" },
+    { id: "foryou", label: "For You", short: "For You", icon: "spark", blurb: "Picks tuned to your palate" },
+    { id: "shelf", label: "Shelf", short: "Shelf", icon: "shelf", primary: true, blurb: "What you own, want, and finished" },
+    { id: "tastings", label: "Tastings", short: "Tastings", icon: "glass", primary: true, blurb: "Log pours and see your ratings" },
+    { id: "families", label: "Distilleries", short: "Houses", icon: "house", blurb: "Every house profiled by proof, style, and release" },
+    { id: "showdown", label: "Showdown", short: "Showdown", icon: "versus", blurb: "Blind head-to-heads with Elo rankings" },
+    { id: "cocktails", label: "Cocktails", short: "Cocktails", icon: "cocktail", blurb: "Bar-grade specs matched to your bottle" },
+    { id: "night", label: "Night", short: "Night", icon: "moon", primary: true, blurb: "Run a blind flight for the room" },
+    { id: "club", label: "Club", short: "Club", icon: "people", blurb: "Trade cards with friends, see the group signal" },
+    { id: "qa", label: "Data tools", short: "Data", icon: "wrench", dev: true, blurb: "Catalog quality queues for maintainers" }
+  ];
+  const DESKTOP_TAB_ORDER = ["store", "shelf", "tastings", "night", "showdown", "foryou", "cocktails", "families", "club", "qa"];
   // The flavor wheel, grouped the way tasters think. Custom write-ins join the
   // same tag set and render under "Yours".
   const TAG_GROUPS = [
@@ -51,6 +68,7 @@
       reviewData: options.reviewData || { reviewsByBottleId: {} },
       staticFriends: options.friends || [],
       friends: options.friends || [],
+      basePalate: options.basePalate || options.palate || {},
       palate: options.palate,
       state: options.state,
       save: options.save,
@@ -90,15 +108,134 @@
         scorecardOpen: false,
         scorecardContext: "store",
         researchCopied: false,
-        reviewCopied: false
+        reviewCopied: false,
+        sheet: "",
+        queuedSheet: "",
+        profileMode: "edit",
+        profileDraft: null,
+        devMode: readDevMode(),
+        priceCheck: readPriceCheck(),
+        pendingClubCard: null,
+        clubLinkText: "",
+        shareBusy: false
       }
     };
 
+    refreshPalate(ctx);
     refreshFriends(ctx);
     ensureActiveBottle(ctx);
+    if (profileLogic && !profileLogic.isOnboarded(ctx.state.profile)) openProfileSheet(ctx, "welcome");
     bindEvents(ctx);
     render(ctx);
     warmCaches(ctx);
+    checkShareLink(ctx);
+  }
+
+  // ctx.palate is derived from this device's profile. Rebuild it whenever the
+  // profile changes so palate fit, flight tasters, and the club card follow.
+  function refreshPalate(ctx) {
+    if (profileLogic && profileLogic.buildPalate) {
+      ctx.palate = profileLogic.buildPalate(ctx.state.profile, ctx.basePalate);
+    } else if (!ctx.palate) {
+      ctx.palate = ctx.basePalate || {};
+    }
+    return ctx.palate;
+  }
+
+  function ownerName(ctx) {
+    if (profileLogic && profileLogic.displayName) return profileLogic.displayName(ctx.state.profile);
+    return (ctx.palate && ctx.palate.name) || "Me";
+  }
+
+  // Data tools (catalog QA queues) are for whoever maintains the catalog, not
+  // the friends using the app. Off by default; ?dev=1 or the More sheet turns
+  // them on for this browser.
+  function readDevMode() {
+    try {
+      if (global.location && /[?&]dev=1\b/.test(global.location.search || "")) return true;
+      return Boolean(global.localStorage && global.localStorage.getItem("barrel-proof-dev") === "1");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function writeDevMode(on) {
+    try {
+      if (!global.localStorage) return;
+      if (on) global.localStorage.setItem("barrel-proof-dev", "1");
+      else global.localStorage.removeItem("barrel-proof-dev");
+    } catch (error) {
+      // private mode: the toggle just won't stick
+    }
+  }
+
+  // Price check — the Buy / Consider / Pass engine — ships as a beta behind a
+  // toggle. Its anchors are state list prices, which run below open-market
+  // shelves, so it stays off for friends until their own sightings can anchor
+  // it. Off: bottle cards show facts, list prices, your pours, and the room.
+  function readPriceCheck() {
+    try {
+      if (global.location && /[?&]pricecheck=1\b/.test(global.location.search || "")) return true;
+      return Boolean(global.localStorage && global.localStorage.getItem("barrel-proof-price-check") === "1");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function writePriceCheck(on) {
+    try {
+      if (!global.localStorage) return;
+      if (on) global.localStorage.setItem("barrel-proof-price-check", "1");
+      else global.localStorage.removeItem("barrel-proof-price-check");
+    } catch (error) {
+      // private mode
+    }
+  }
+
+  function priceCheckEnabled(ctx) {
+    return Boolean(ctx && ctx.ui && ctx.ui.priceCheck);
+  }
+
+  function openProfileSheet(ctx, mode) {
+    const profile = (profileLogic ? profileLogic.normalizeProfile(ctx.state.profile) : ctx.state.profile) || {};
+    ctx.ui.profileMode = mode || "edit";
+    ctx.ui.profileDraft = {
+      name: profile.name || "",
+      proofComfort: profile.proofComfort || "",
+      flavors: new Set(profile.flavors || [])
+    };
+    ctx.ui.sheet = "profile";
+  }
+
+  function saveProfile(ctx, options) {
+    const skip = Boolean(options && options.skip);
+    const draft = ctx.ui.profileDraft || { name: "", proofComfort: "", flavors: new Set() };
+    const previous = ctx.state.profile || {};
+    const next = {
+      name: skip ? (previous.name || "") : draft.name,
+      proofComfort: skip ? (previous.proofComfort || "") : draft.proofComfort,
+      flavors: skip ? (previous.flavors || []) : Array.from(draft.flavors),
+      onboardedAt: previous.onboardedAt || new Date().toISOString()
+    };
+    ctx.state.profile = profileLogic ? profileLogic.normalizeProfile(next) : next;
+    refreshPalate(ctx);
+    ctx._forYou = null;
+    ctx.ui.sheet = ctx.ui.queuedSheet || "";
+    ctx.ui.queuedSheet = "";
+    ctx.ui.profileDraft = null;
+    persist(ctx);
+    render(ctx);
+  }
+
+  function closeSheet(ctx) {
+    if (ctx.ui.sheet === "profile" && ctx.ui.profileMode === "welcome") {
+      saveProfile(ctx, { skip: true });
+      return;
+    }
+    if (ctx.ui.sheet === "club-link") ctx.ui.pendingClubCard = null;
+    ctx.ui.sheet = "";
+    ctx.ui.profileDraft = null;
+    render(ctx);
   }
 
   // ctx.friends = seeded friends (none today) + the friend cards the user has
@@ -117,6 +254,10 @@
   function warmCaches(ctx) {
     const fam = global.BarrelFamilies;
     const pal = global.BarrelPalate;
+    const schedule = (fn, timeout) => {
+      if (global.requestIdleCallback) global.requestIdleCallback(fn, { timeout: timeout || 4000 });
+      else setTimeout(fn, 400);
+    };
     const run = () => {
       for (const bottle of ctx.bottles) {
         if (fam) {
@@ -125,13 +266,28 @@
         }
         if (pal) pal.availability(bottle);
       }
+      // Then the two computations that made first taps on Distilleries and For
+      // You visibly lag: build them now so those tabs open instantly.
+      schedule(() => {
+        try { familyIndex(ctx); } catch (error) { /* non-fatal */ }
+        schedule(() => {
+          try { forYouData(ctx); } catch (error) { /* non-fatal */ }
+        });
+      });
     };
-    if (global.requestIdleCallback) global.requestIdleCallback(run, { timeout: 2500 });
-    else setTimeout(run, 250);
+    schedule(run, 2500);
   }
 
   function bindEvents(ctx) {
     ctx.mount.addEventListener("click", async (event) => {
+      // Tap the dimmed backdrop (but not the sheet itself) closes a sheet.
+      if (ctx.ui.sheet && event.target.closest) {
+        if (event.target.closest(".sheet-backdrop") && !event.target.closest(".sheet-card")) {
+          closeSheet(ctx);
+          return;
+        }
+      }
+
       // Tap the dimmed backdrop (but not the card itself) closes the scorecard.
       if (ctx.ui.scorecardOpen && event.target.closest) {
         if (event.target.closest(".scorecard-backdrop") && !event.target.closest(".scorecard-card")) {
@@ -386,10 +542,109 @@
         return;
       }
 
+      if (target.dataset.action === "open-sheet") {
+        ctx.ui.sheet = target.dataset.sheet || "more";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "close-sheet") {
+        closeSheet(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "open-profile") {
+        openProfileSheet(ctx, "edit");
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "profile-comfort") {
+        const draft = ctx.ui.profileDraft;
+        if (draft) {
+          draft.proofComfort = draft.proofComfort === target.dataset.comfort ? "" : target.dataset.comfort;
+          render(ctx);
+        }
+        return;
+      }
+
+      if (target.dataset.action === "profile-flavor") {
+        const draft = ctx.ui.profileDraft;
+        const flavor = target.dataset.flavor;
+        const max = profileLogic ? profileLogic.MAX_FLAVORS : 6;
+        if (draft && flavor) {
+          if (draft.flavors.has(flavor)) draft.flavors.delete(flavor);
+          else if (draft.flavors.size < max) draft.flavors.add(flavor);
+          else showToast(ctx, max + " flavors is plenty — tap one to swap it out.");
+          render(ctx);
+        }
+        return;
+      }
+
+      if (target.dataset.action === "profile-save") {
+        const welcome = ctx.ui.profileMode === "welcome";
+        saveProfile(ctx);
+        showToast(ctx, welcome ? "Welcome, " + ownerName(ctx) + ". Let's find you a bottle." : "Profile saved.");
+        return;
+      }
+
+      if (target.dataset.action === "profile-skip") {
+        saveProfile(ctx, { skip: true });
+        return;
+      }
+
+      if (target.dataset.action === "toggle-dev") {
+        ctx.ui.devMode = !ctx.ui.devMode;
+        writeDevMode(ctx.ui.devMode);
+        if (!ctx.ui.devMode && ctx.ui.tab === "qa") ctx.ui.tab = "store";
+        render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "toggle-price-check") {
+        ctx.ui.priceCheck = !ctx.ui.priceCheck;
+        writePriceCheck(ctx.ui.priceCheck);
+        render(ctx);
+        showToast(ctx, ctx.ui.priceCheck ? "Price check on — Buy / Consider / Pass shows on bottle cards." : "Price check off.");
+        return;
+      }
+
+      if (target.dataset.action === "share-app") {
+        shareApp(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "club-share-link") {
+        shareClubLink(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "club-link-import") {
+        importClubLinkText(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "club-accept-link") {
+        acceptPendingClubCard(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "club-dismiss-link") {
+        ctx.ui.pendingClubCard = null;
+        ctx.ui.sheet = "";
+        render(ctx);
+        return;
+      }
+
       if (target.dataset.tab) {
+        const changed = ctx.ui.tab !== target.dataset.tab;
         ctx.ui.tab = target.dataset.tab;
         ctx.ui.scorecardOpen = false;
+        ctx.ui.sheet = "";
         render(ctx);
+        if (changed && global.scrollTo) {
+          try { global.scrollTo({ top: 0, left: 0, behavior: "instant" }); } catch (error) { global.scrollTo(0, 0); }
+        }
         return;
       }
 
@@ -590,6 +845,10 @@
 
       if (target.dataset.action === "export") {
         exportState(ctx.state);
+        if (ctx.ui.sheet) {
+          ctx.ui.sheet = "";
+          render(ctx);
+        }
         showToast(ctx, "Backup downloaded.");
         return;
       }
@@ -626,7 +885,7 @@
         ctx.state.activeFlight = {
           status: "setup",
           bottleIds: [],
-          tasters: ctx.palate && ctx.palate.name ? [String(ctx.palate.name)] : []
+          tasters: [ownerName(ctx)]
         };
         ctx.ui.nightQuery = "";
         persist(ctx);
@@ -731,8 +990,11 @@
         }
         ctx.state = ctx.reset();
         ctx._forYou = null;
+        ctx.ui.sheet = "";
+        refreshPalate(ctx);
         refreshFriends(ctx);
         persist(ctx);
+        if (profileLogic && !profileLogic.isOnboarded(ctx.state.profile)) openProfileSheet(ctx, "welcome");
         render(ctx);
       }
     });
@@ -749,8 +1011,19 @@
           }
           return;
         }
+        if (event.key === "Enter" && event.target && event.target.id === "profileName") {
+          event.preventDefault();
+          saveProfile(ctx);
+          return;
+        }
+        if (event.key === "Enter" && event.target && event.target.id === "clubLinkInput") {
+          event.preventDefault();
+          importClubLinkText(ctx);
+          return;
+        }
         if (event.key !== "Escape") return;
         if (ctx._scanner) { closeScanner(ctx); render(ctx); return; }
+        if (ctx.ui.sheet) { closeSheet(ctx); return; }
         if (ctx.ui.scorecardOpen) {
           ctx.ui.scorecardOpen = false;
           render(ctx);
@@ -816,6 +1089,12 @@
       if (target.id === "quickAdd") {
         ctx.ui.quickQuery = target.value;
         scheduleQuickResults(ctx);
+      }
+      if (target.id === "profileName" && ctx.ui.profileDraft) {
+        ctx.ui.profileDraft.name = target.value;
+      }
+      if (target.id === "clubLinkInput") {
+        ctx.ui.clubLinkText = target.value;
       }
 
       if (target.dataset && target.dataset.nightGlass) {
@@ -1174,6 +1453,36 @@
     }
   }
 
+  // Learned palate fit (0..1) from the recommender's profile, once the user has
+  // logged anything. Lets the verdict judge the 8,000+ catalog bottles that carry
+  // no flavor tags by distillery, style, and proof preferences instead.
+  function learnedFitFor(ctx, bottle) {
+    const P = global.BarrelPalate;
+    if (!P || !P.scoreFor || !bottle) return null;
+    const data = forYouData(ctx);
+    if (!data || !data.profile || !data.profile.ready) return null;
+    const scored = P.scoreFor(bottle, data.profile, { families: global.BarrelFamilies });
+    if (!scored || !Number.isFinite(scored.score)) return null;
+    return Math.max(0, Math.min(1, 0.5 + scored.score / 3));
+  }
+
+  function decide(ctx, bottle, shelfPrice) {
+    const learnedFit = learnedFitFor(ctx, bottle);
+    const P = global.BarrelPalate;
+    const avail = P && P.availability ? P.availability(bottle) : null;
+    return rec.scoreBottleDecision({
+      bottle,
+      shelfPrice,
+      palate: ctx.palate,
+      friends: ctx.friends,
+      status: ctx.state.statuses[bottle.id],
+      learnedFit: Number.isFinite(learnedFit) ? learnedFit : undefined,
+      // The availability model recognizes allocated brands the catalog rows
+      // themselves do not flag (no rarity/hype fields on imported records).
+      allocated: Boolean(avail && !avail.buyable)
+    });
+  }
+
   function persist(ctx) {
     const ok = ctx.save(ctx.state);
     // ctx.save returns false when localStorage is full or blocked (e.g. private
@@ -1204,28 +1513,18 @@
     attachObservedPrices(ctx);
     const focusState = captureFocusState(ctx.mount);
     const activeBottle = getActiveBottle(ctx);
-    const result = rec.scoreBottleDecision({
-      bottle: activeBottle,
-      shelfPrice: ctx.state.storePrice,
-      palate: ctx.palate,
-      friends: ctx.friends,
-      status: ctx.state.statuses[activeBottle.id]
-    });
+    const result = decide(ctx, activeBottle, ctx.state.storePrice);
+
+    if (ctx.ui.tab === "qa" && !ctx.ui.devMode) ctx.ui.tab = "store";
+    const desktopTabs = DESKTOP_TAB_ORDER
+      .map((id) => TABS.find((tab) => tab.id === id))
+      .filter((tab) => tab && (!tab.dev || ctx.ui.devMode));
 
     ctx.mount.innerHTML = `
       ${renderHeader(ctx)}
       ${renderSaveBanner(ctx)}
       <nav class="tabbar" role="tablist" aria-label="Primary">
-        ${tabButton(ctx, "foryou", "For You")}
-        ${tabButton(ctx, "store", "Store Mode")}
-        ${tabButton(ctx, "families", "Distilleries")}
-        ${tabButton(ctx, "showdown", "Showdown")}
-        ${tabButton(ctx, "shelf", "Shelf")}
-        ${tabButton(ctx, "cocktails", "Cocktails")}
-        ${tabButton(ctx, "tastings", "Tastings")}
-        ${tabButton(ctx, "night", "Night")}
-        ${tabButton(ctx, "club", "Club")}
-        ${tabButton(ctx, "qa", "Data")}
+        ${desktopTabs.map((tab) => tabButton(ctx, tab.id, tab.label)).join("")}
       </nav>
       <main>
         ${ctx.ui.tab === "foryou" ? renderForYou(ctx) : ""}
@@ -1239,9 +1538,302 @@
         ${ctx.ui.tab === "club" ? renderClub(ctx) : ""}
         ${ctx.ui.tab === "qa" ? renderCatalogQuality(ctx) : ""}
       </main>
+      ${renderBottomBar(ctx)}
       ${renderScorecard(ctx)}
+      ${renderSheet(ctx)}
     `;
     restoreFocusState(ctx.mount, focusState);
+  }
+
+  // Phone navigation: four primary destinations plus More. When the current tab
+  // lives behind More, that slot shows it as the active item.
+  function renderBottomBar(ctx) {
+    const primary = TABS.filter((tab) => tab.primary);
+    const current = TABS.find((tab) => tab.id === ctx.ui.tab);
+    const moreActive = Boolean(current && !current.primary);
+    return `
+      <nav class="bottombar" aria-label="Primary">
+        ${primary.map((tab) => `<button class="bottom-tab${ctx.ui.tab === tab.id ? " active" : ""}" type="button" data-tab="${tab.id}" aria-current="${ctx.ui.tab === tab.id ? "page" : "false"}">${icon(tab.icon)}<span>${escapeHtml(tab.short)}</span></button>`).join("")}
+        <button class="bottom-tab${moreActive ? " active" : ""}" type="button" data-action="open-sheet" data-sheet="more" aria-haspopup="dialog">${icon(moreActive ? current.icon : "dots")}<span>${escapeHtml(moreActive ? current.short : "More")}</span></button>
+      </nav>
+    `;
+  }
+
+  // ---------- Sheets: More, Profile, About, Club link ----------
+
+  function renderSheet(ctx) {
+    const kind = ctx.ui.sheet;
+    if (!kind) return "";
+    let body = "";
+    if (kind === "more") body = renderMoreSheet(ctx);
+    else if (kind === "profile") body = renderProfileSheet(ctx);
+    else if (kind === "about") body = renderAboutSheet(ctx);
+    else if (kind === "club-link") body = renderClubLinkSheet(ctx);
+    if (!body) return "";
+    return `
+      <div class="sheet-backdrop">
+        <section class="sheet-card${kind === "profile" ? " profile-sheet" : ""}" role="dialog" aria-modal="true" aria-label="${escapeAttr(kind === "profile" ? "Your profile" : kind === "about" ? "About Barrel Proof" : kind === "club-link" ? "Club invite" : "More")}">
+          <div class="sheet-grip" aria-hidden="true"></div>
+          ${body}
+        </section>
+      </div>
+    `;
+  }
+
+  function sheetHead(eyebrow, title, blurb, closeLabel) {
+    return `
+      <div class="sheet-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(eyebrow)}</p>
+          <h2>${escapeHtml(title)}</h2>
+          ${blurb ? `<p>${escapeHtml(blurb)}</p>` : ""}
+        </div>
+        <button class="sheet-close" type="button" data-action="close-sheet" aria-label="${escapeAttr(closeLabel || "Close")}">&times;</button>
+      </div>
+    `;
+  }
+
+  function sheetRow(opts) {
+    return `
+      <button class="sheet-row${opts.active ? " active" : ""}${opts.danger ? " danger" : ""}" type="button" ${opts.attrs || ""}>
+        <span class="sheet-row-icon">${icon(opts.icon)}</span>
+        <span class="sheet-row-text"><strong>${escapeHtml(opts.title)}</strong>${opts.detail ? `<small>${escapeHtml(opts.detail)}</small>` : ""}</span>
+        <span class="sheet-row-end">${opts.end || ""}</span>
+      </button>
+    `;
+  }
+
+  function renderMoreSheet(ctx) {
+    const secondary = TABS.filter((tab) => !tab.primary && (!tab.dev || ctx.ui.devMode));
+    const profile = profileLogic ? profileLogic.normalizeProfile(ctx.state.profile) : (ctx.state.profile || {});
+    const name = profile.name || "Set your name";
+    const description = (profileLogic ? profileLogic.describeProfile(profile) : "") || "Your palate shapes every call";
+    const meta = ctx.catalogMeta || {};
+    const count = Number(meta.importedBottleCount) || ctx.bottles.length;
+    return `
+      ${sheetHead("Barrel Proof", "More", "")}
+      <div class="sheet-section">
+        <p class="eyebrow">Explore</p>
+        ${secondary.map((tab) => sheetRow({ icon: tab.icon, title: tab.label, detail: tab.blurb, active: ctx.ui.tab === tab.id, attrs: `data-tab="${escapeAttr(tab.id)}"` })).join("")}
+      </div>
+      <div class="sheet-section">
+        <p class="eyebrow">You</p>
+        ${sheetRow({ icon: "user", title: name, detail: description, attrs: 'data-action="open-profile"', end: "Edit" })}
+        ${sheetRow({ icon: "share", title: "Share the app", detail: "Send friends the link to install Barrel Proof", attrs: 'data-action="share-app"' })}
+        ${sheetRow({ icon: "download", title: "Back up to a file", detail: "Shelf, tastings, prices, and club in one file", attrs: 'data-action="export"' })}
+        ${sheetRow({ icon: "upload", title: "Restore from a backup", detail: "Bring a backup onto this device", attrs: 'data-action="import"' })}
+      </div>
+      <div class="sheet-section">
+        <p class="eyebrow">App</p>
+        ${sheetRow({ icon: "info", title: "About & data sources", detail: `${count.toLocaleString("en-US")} bottles from ${Number(meta.sourceCount) || 0} official catalogs`, attrs: 'data-action="open-sheet" data-sheet="about"' })}
+        ${sheetRow({ icon: "tag", title: "Price check · beta", detail: "Buy / Consider / Pass on bottle cards. Anchored to state list prices, so treat it as an experiment.", attrs: 'data-action="toggle-price-check" aria-pressed="' + (ctx.ui.priceCheck ? "true" : "false") + '"', end: `<span class="sheet-toggle${ctx.ui.priceCheck ? " on" : ""}" aria-hidden="true"></span>` })}
+        ${sheetRow({ icon: "wrench", title: "Data tools", detail: "Catalog quality queues for maintainers", attrs: 'data-action="toggle-dev" aria-pressed="' + (ctx.ui.devMode ? "true" : "false") + '"', end: `<span class="sheet-toggle${ctx.ui.devMode ? " on" : ""}" aria-hidden="true"></span>` })}
+        ${sheetRow({ icon: "rotate", title: "Reset everything", detail: "Erases this device's data after a confirmation", attrs: 'data-action="reset"', danger: true })}
+      </div>
+    `;
+  }
+
+  function renderProfileSheet(ctx) {
+    const draft = ctx.ui.profileDraft || { name: "", proofComfort: "", flavors: new Set() };
+    const welcome = ctx.ui.profileMode === "welcome";
+    const options = profileLogic ? profileLogic.PROOF_COMFORT : [];
+    const flavors = profileLogic ? profileLogic.FLAVOR_OPTIONS : [];
+    const max = profileLogic ? profileLogic.MAX_FLAVORS : 6;
+    return `
+      ${sheetHead(
+        welcome ? "Welcome" : "Your profile",
+        welcome ? "Make Barrel Proof yours" : "Name & palate",
+        welcome ? "Three quick taps. Your name goes on your flights and club card; your taste tunes For You and every bottle card." : "",
+        welcome ? "Skip for now" : "Close"
+      )}
+      <label class="field">
+        <span>Your name</span>
+        <input id="profileName" type="text" value="${escapeAttr(draft.name)}" placeholder="What your friends call you" maxlength="40" autocomplete="given-name" autocapitalize="words" enterkeyhint="done">
+      </label>
+      <div class="field">
+        <span>Proof comfort</span>
+        <div class="comfort-options">
+          ${options.map((option) => `<button class="comfort-option${draft.proofComfort === option.id ? " on" : ""}" type="button" data-action="profile-comfort" data-comfort="${escapeAttr(option.id)}" aria-pressed="${draft.proofComfort === option.id}"><strong>${escapeHtml(option.label)}</strong><small>${escapeHtml(option.detail)}</small></button>`).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <span>Flavors you reach for <em class="optional-tag">pick up to ${max}</em></span>
+        <div class="flavor-picker">
+          ${flavors.map((flavor) => `<button class="${draft.flavors.has(flavor) ? "on" : ""}" type="button" data-action="profile-flavor" data-flavor="${escapeAttr(flavor)}" aria-pressed="${draft.flavors.has(flavor)}">${escapeHtml(flavor)}</button>`).join("")}
+        </div>
+        <small class="flavor-count">${draft.flavors.size} of ${max} picked · the more you log, the less this matters</small>
+      </div>
+      <div class="sheet-actions">
+        <button class="primary-button" type="button" data-action="profile-save">${welcome ? "Start pouring" : "Save"}</button>
+        ${welcome ? `<button class="ghost-button" type="button" data-action="profile-skip">Skip for now</button>` : ""}
+      </div>
+      <p class="sheet-fine">Everything stays on this device. Change it any time from More.</p>
+    `;
+  }
+
+  function renderAboutSheet(ctx) {
+    const meta = ctx.catalogMeta || {};
+    const imported = Number(meta.importedBottleCount) || ctx.bottles.length;
+    const full = Number(meta.fullBottleCount) || 0;
+    const generated = meta.generatedAt ? new Date(meta.generatedAt) : null;
+    const generatedText = generated && !Number.isNaN(generated.getTime())
+      ? generated.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—";
+    return `
+      ${sheetHead("About", "Barrel Proof", "A private bourbon decision companion. No accounts, no tracking — everything you log stays on your phone.")}
+      <div class="about-stats">
+        <div><span>Bottles</span><strong>${imported.toLocaleString("en-US")}</strong></div>
+        <div><span>Official sources</span><strong>${Number(meta.sourceCount) || 0}</strong></div>
+        <div><span>Catalog date</span><strong>${escapeHtml(generatedText)}</strong></div>
+      </div>
+      <p class="about-copy">Bottle identities and list prices come from state liquor authorities and federal label registries — control-state price books, TTB COLA, LCBO, and more.${full > imported ? ` Of ${full.toLocaleString("en-US")} raw records, only the ${imported.toLocaleString("en-US")} with a known maker and a confirmed price or cross-source identity are shown.` : ""} List prices are not your local shelf: log what you see and the app anchors on that instead.</p>
+      <p class="about-copy">Price check, the Buy / Consider / Pass engine, is in beta behind More. It is anchored to state list prices, which run below open-market shelves, so it stays off until your own price sightings can anchor it.</p>
+      <div class="sheet-actions">
+        <button class="ghost-button" type="button" data-action="share-app">Share the app</button>
+      </div>
+    `;
+  }
+
+  function renderClubLinkSheet(ctx) {
+    const card = ctx.ui.pendingClubCard;
+    if (!card) return "";
+    const ratings = Object.keys(card.ratings || {}).length;
+    const byId = getBottleIndex(ctx);
+    const favorites = (card.favorites || []).map((id) => byId.get(id)).filter(Boolean).slice(0, 3).map((bottle) => bottle.name);
+    const existing = ctx.friends.find((friend) => String(friend.name || "").toLowerCase() === String(card.name || "").toLowerCase());
+    return `
+      ${sheetHead("Club invite", card.name + "'s card", existing
+        ? "You already have " + card.name + " in your club — this replaces their card with the newer one."
+        : "Add " + card.name + " to your club and their ratings show on every bottle card as the room's take.")}
+      <div class="about-stats">
+        <div><span>Ratings</span><strong>${ratings}</strong></div>
+        <div><span>Owned</span><strong>${(card.owned || []).length}</strong></div>
+        <div><span>Favorites</span><strong>${(card.favorites || []).length}</strong></div>
+      </div>
+      ${card.style ? `<p class="about-copy">${escapeHtml(card.style)}</p>` : ""}
+      ${favorites.length ? `<p class="about-copy">Top pours: ${favorites.map((name) => escapeHtml(name)).join(", ")}</p>` : ""}
+      <div class="sheet-actions">
+        <button class="primary-button" type="button" data-action="club-accept-link">${existing ? "Update " + escapeHtml(card.name) : "Add to my club"}</button>
+        <button class="ghost-button" type="button" data-action="club-dismiss-link">Not now</button>
+      </div>
+    `;
+  }
+
+  // ---------- Sharing (club links, the app itself) ----------
+
+  function appUrl() {
+    const loc = global.location;
+    if (!loc) return "";
+    return String(loc.origin || "") + String(loc.pathname || "");
+  }
+
+  async function tryNativeShare(payload) {
+    const nav = global.navigator;
+    if (!nav || typeof nav.share !== "function") return false;
+    try {
+      await nav.share(payload);
+      return true;
+    } catch (error) {
+      // AbortError = the person closed the share sheet; don't fall through to a
+      // clipboard copy they didn't ask for.
+      return Boolean(error && error.name === "AbortError");
+    }
+  }
+
+  async function shareClubLink(ctx) {
+    if (!clubLogic || !clubLogic.buildShareToken) return;
+    ctx.ui.shareBusy = true;
+    render(ctx);
+    try {
+      const card = clubLogic.buildCardFromState(ctx.state, ctx.palate);
+      const token = await clubLogic.buildShareToken(card);
+      const url = clubLogic.buildShareUrl(appUrl(), token);
+      ctx.ui.shareBusy = false;
+      const shared = await tryNativeShare({
+        title: card.name + "'s Barrel Proof club card",
+        text: "Open this on your phone to add my ratings to your Barrel Proof club.",
+        url
+      });
+      if (!shared) {
+        let copied = false;
+        try { copied = await copyText(url); } catch (error) { copied = false; }
+        ctx.ui.myShareUrl = copied ? "" : url;
+        showToast(ctx, copied ? "Link copied — paste it to your group." : "Clipboard unavailable — copy your link from the box below.");
+      }
+      render(ctx);
+    } catch (error) {
+      ctx.ui.shareBusy = false;
+      render(ctx);
+      showToast(ctx, "Couldn't build the link — download the card file instead.");
+    }
+  }
+
+  async function shareApp(ctx) {
+    const url = appUrl();
+    const shared = await tryNativeShare({
+      title: "Barrel Proof",
+      text: "Barrel Proof — a private bourbon decision app. Open it on your phone and add it to your home screen.",
+      url
+    });
+    if (!shared) {
+      await copyText(url);
+      showToast(ctx, "App link copied.");
+    }
+  }
+
+  async function importClubLinkText(ctx) {
+    if (!clubLogic || !clubLogic.extractShareToken) return;
+    const token = clubLogic.extractShareToken(ctx.ui.clubLinkText || "");
+    const card = token ? await clubLogic.parseShareToken(token) : null;
+    if (!card) {
+      showToast(ctx, "That doesn't look like a Barrel Proof club link.");
+      return;
+    }
+    ctx.ui.pendingClubCard = card;
+    ctx.ui.clubLinkText = "";
+    ctx.ui.sheet = "club-link";
+    render(ctx);
+  }
+
+  function acceptPendingClubCard(ctx) {
+    const card = ctx.ui.pendingClubCard;
+    if (!card || !clubLogic) return;
+    if (!ctx.state.club || typeof ctx.state.club !== "object") ctx.state.club = { friends: [] };
+    ctx.state.club.friends = clubLogic.mergeFriend(ctx.state.club.friends, card);
+    refreshFriends(ctx);
+    ctx._forYou = null;
+    ctx.ui.pendingClubCard = null;
+    ctx.ui.sheet = "";
+    ctx.ui.tab = "club";
+    persist(ctx);
+    render(ctx);
+    showToast(ctx, card.name + " joined your club.");
+  }
+
+  // A friend's link opens the app with #club=<token>. Read it once, strip it
+  // from the address bar (so a reload doesn't re-prompt), and ask before adding.
+  async function checkShareLink(ctx) {
+    const loc = global.location;
+    if (!loc || !clubLogic || !clubLogic.extractShareToken) return;
+    const token = clubLogic.extractShareToken(loc.hash || "");
+    if (!token) return;
+    try {
+      if (global.history && global.history.replaceState) global.history.replaceState(null, "", loc.pathname + loc.search);
+    } catch (error) {
+      // some embedded browsers refuse; harmless
+    }
+    const card = await clubLogic.parseShareToken(token);
+    if (!card) {
+      showToast(ctx, "That club link didn't work — ask your friend to send it again.");
+      return;
+    }
+    ctx.ui.pendingClubCard = card;
+    if (ctx.ui.sheet === "profile") {
+      ctx.ui.queuedSheet = "club-link";
+      return;
+    }
+    ctx.ui.sheet = "club-link";
+    render(ctx);
   }
 
   function captureFocusState(mount) {
@@ -1306,6 +1898,9 @@
     const owned = countStatus(ctx, "owned");
     const wishlist = countStatus(ctx, "wishlist");
     const avgScore = average(ctx.state.tastings.map((tasting) => tasting.score));
+    const profile = profileLogic ? profileLogic.normalizeProfile(ctx.state.profile) : (ctx.state.profile || {});
+    const name = profile.name || "";
+    const blurb = profileLogic ? profileLogic.describeProfile(profile) : "";
     return `
       <header class="app-header">
         <div class="brand">
@@ -1313,7 +1908,7 @@
             <span></span><span></span><span></span>
           </div>
           <div>
-            <p class="eyebrow">Private bourbon intelligence</p>
+            <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
             <h1>Barrel Proof</h1>
           </div>
         </div>
@@ -1323,14 +1918,12 @@
           <div><span>${avgScore ? avgScore.toFixed(1) : "--"}</span><small>Avg pour</small></div>
         </div>
         <div class="header-actions">
-          <button class="icon-button" type="button" data-action="export" title="Back up to a file" aria-label="Back up your data to a file">
-            ${icon("download")}
+          <button class="profile-chip${name ? "" : " unset"}" type="button" data-action="open-profile" title="Your name and palate" aria-label="Your profile">
+            <span class="profile-avatar">${escapeHtml(name ? initials(name) || name.slice(0, 1).toUpperCase() : "?")}</span>
+            <span class="profile-chip-text"><strong>${escapeHtml(name || "Set your name")}</strong><small>${escapeHtml(blurb || (name ? "Tap to set your palate" : "and palate"))}</small></span>
           </button>
-          <button class="icon-button" type="button" data-action="import" title="Restore from a backup file" aria-label="Restore your data from a backup file">
-            ${icon("upload")}
-          </button>
-          <button class="icon-button" type="button" data-action="reset" title="Reset everything" aria-label="Reset everything">
-            ${icon("rotate")}
+          <button class="icon-button header-menu" type="button" data-action="open-sheet" data-sheet="more" title="More" aria-label="More options">
+            ${icon("dots")}
           </button>
         </div>
       </header>
@@ -1374,7 +1967,8 @@
     };
     add("MSRP", bottle.msrp);
     add("Fair", bottle.fairPrice);
-    add("Source", rec.getSourceRetailPrice(bottle));
+    const sourceInfo = rec.getSourceRetailPriceInfo ? rec.getSourceRetailPriceInfo(bottle) : { value: rec.getSourceRetailPrice(bottle) };
+    add(sourceInfo.basis === "midpoint" ? "Typical" : "Source", sourceInfo.value);
     add("You've seen", bottle.observedPrice);
     if (!chips.length) return "";
     const current = Number(ctx.state.storePrice);
@@ -1389,6 +1983,149 @@
   // anywhere (Store results, Shelf). Essentials up top; the deep research lives in
   // a "Full details" expander so the answer is glanceable, no endless scroll.
   function renderScorecard(ctx) {
+    return priceCheckEnabled(ctx) ? renderVerdictScorecard(ctx) : renderBottleCard(ctx);
+  }
+
+  // The bottle card friends see: what it is, what it lists for, your pours, the
+  // room's rating, your shelf status — and a place to log the price you saw.
+  // No verdict: that engine is Price check, a beta behind More.
+  function renderBottleCard(ctx) {
+    if (!ctx.ui.scorecardOpen) return "";
+    const bottle = getActiveBottle(ctx);
+    if (!bottle) return "";
+    const isShelf = ctx.ui.scorecardContext === "shelf";
+    const canonId = resolveIdentity(ctx, bottle.id);
+    const pours = (ctx.state.tastings || []).filter((tasting) => resolveIdentity(ctx, tasting.bottleId) === canonId);
+    const poursAvg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+    const batchAverages = {};
+    for (const pour of pours) {
+      if (!pour.batch || !Number.isFinite(Number(pour.score))) continue;
+      (batchAverages[pour.batch] = batchAverages[pour.batch] || []).push(Number(pour.score));
+    }
+    const batchRows = Object.entries(batchAverages)
+      .map(([label, scores]) => ({ label, avg: average(scores), count: scores.length }))
+      .sort((a, b) => b.avg - a.avg);
+    const friendAvg = rec.getFriendAverage(bottle.id, ctx.friends);
+    const listing = listPriceSummary(bottle);
+
+    return `
+      <div class="scorecard-backdrop">
+        <section class="scorecard-card bottle-card-mode" role="dialog" aria-modal="true" aria-label="${escapeAttr(bottle.name)}">
+          <button class="scorecard-close" type="button" data-action="close-card" aria-label="Close">&times;</button>
+          <p class="eyebrow card-eyebrow">${isShelf ? "Your bottle" : "Bottle"}</p>
+          ${renderBottleHero(ctx, bottle)}
+          <div class="decision-metrics">
+            ${metric(listing.label, listing.value)}
+            ${metric("MSRP", rec.money(bottle.msrp))}
+            ${metric("Your avg", poursAvg ? poursAvg.toFixed(1) : "--")}
+            ${metric("Club", friendAvg ? friendAvg.toFixed(1) : "--")}
+          </div>
+          ${listing.note ? `<p class="source-line">${escapeHtml(listing.note)}</p>` : ""}
+          ${renderScorecardReviews(ctx, bottle)}
+          ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
+          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${pour.batch ? ' <span class="batch-tag">' + escapeHtml(pour.batch) + "</span>" : ""}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}${batchRows.length ? `<div class="batch-breakdown">${batchRows.map((row) => `<span class="batch-tag">${escapeHtml(row.label)} · ${row.avg.toFixed(1)}${row.count > 1 ? " (" + row.count + ")" : ""}</span>`).join("")}</div>` : ""}</section>` : ""}
+          ${renderScorecardShelfRow(ctx, bottle)}
+          <div class="status-actions">
+            ${statusButton(ctx, "owned", "Add to shelf")}
+            ${statusButton(ctx, "wishlist", "Wishlist")}
+            ${statusButton(ctx, "passed", "Pass log")}
+            <button class="ghost-button" type="button" data-action="log-active">Log tasting</button>
+          </div>
+          ${renderPriceSightings(ctx, bottle)}
+          <details class="scorecard-more">
+            <summary>More about this bottle</summary>
+            <div class="scorecard-group">
+              <h4>Reviews &amp; pairing</h4>
+              ${renderReviewIntelligence(ctx, bottle)}
+              ${renderCocktailLane(ctx, bottle)}
+            </div>
+            <details class="scorecard-data">
+              <summary>Data quality &amp; sources</summary>
+              ${renderBottleIntelligence(ctx, bottle, null)}
+              ${renderBottleDossier(ctx, bottle, null)}
+              ${renderIdentityPanel(ctx, bottle)}
+              ${renderBottleScout(ctx, bottle)}
+            </details>
+          </details>
+        </section>
+      </div>
+    `;
+  }
+
+  // What the state catalogs list a bottle at, said plainly. Never a verdict.
+  function listPriceSummary(bottle) {
+    const info = rec.getSourceRetailPriceInfo
+      ? rec.getSourceRetailPriceInfo(bottle)
+      : { value: rec.getSourceRetailPrice(bottle), observations: 0 };
+    const summary = bottle.sourceSummary || {};
+    if (Number.isFinite(info.value)) {
+      const count = Number(summary.priceObservationCount) || info.observations || 0;
+      const min = Number(summary.minRetailPrice);
+      const max = Number(summary.maxRetailPrice);
+      const range = Number.isFinite(min) && Number.isFinite(max) && max > min ? rec.money(min) + " to " + rec.money(max) : "";
+      const note = count > 1
+        ? "State catalogs list it " + (range ? "from " + range : "at " + rec.money(info.value)) + " across " + count + " prices. Your shelf may differ — log what you see."
+        : "One state catalog lists it at this price. Your shelf may differ — log what you see.";
+      return { label: "List price", value: rec.money(info.value), note };
+    }
+    if (Number.isFinite(Number(bottle.msrp))) {
+      return { label: "List price", value: "--", note: "No state catalog price on file; MSRP shown." };
+    }
+    return { label: "List price", value: "--", note: "" };
+  }
+
+  // The one price a friend should see on a row: what they logged, else the
+  // state list price, else MSRP.
+  function displayPrice(bottle) {
+    if (Number.isFinite(bottle.observedPrice)) return { value: bottle.observedPrice, label: "you saw" };
+    const info = rec.getSourceRetailPriceInfo ? rec.getSourceRetailPriceInfo(bottle) : { value: rec.getSourceRetailPrice(bottle) };
+    if (Number.isFinite(info.value)) return { value: info.value, label: "list" };
+    if (Number.isFinite(Number(bottle.msrp))) return { value: Number(bottle.msrp), label: "MSRP" };
+    return null;
+  }
+
+  function bottleFactLine(bottle) {
+    const parts = [getBottleMaker(bottle)];
+    const proofText = bottle.proofDisplay || (Number.isFinite(bottle.proof) ? bottle.proof + " proof" : "");
+    if (proofText) parts.push(proofText);
+    if (bottle.age && !/^(unknown|nas|n\/a|batch dependent)$/i.test(String(bottle.age))) parts.push(bottle.age);
+    const attrs = bottleAttrs(bottle);
+    if (attrs.style && attrs.style !== "Traditional bourbon") parts.push(attrs.style);
+    return parts.filter(Boolean).join(" · ");
+  }
+
+  // Price sightings: the local price map the group builds one shelf at a time.
+  function renderPriceSightings(ctx, bottle) {
+    const P = global.BarrelPrices;
+    if (!P) return "";
+    const obs = P.list(ctx.state, bottle.id);
+    const stats = P.stats(ctx.state, bottle.id);
+    const entered = Number(ctx.state.storePrice);
+    const canLog = Number.isFinite(entered) && entered > 0;
+    return `
+      <section class="price-log">
+        <div class="price-log-head">
+          <div>
+            <p class="eyebrow">Prices you've seen</p>
+            ${stats
+              ? `<strong>${stats.count === 1 || stats.min === stats.max ? rec.money(stats.median) : "median " + rec.money(stats.median) + " &middot; " + rec.money(stats.min) + "&ndash;" + rec.money(stats.max)}</strong><small>${stats.count} sighting${stats.count === 1 ? "" : "s"} &middot; your local reference</small>`
+              : `<strong>No sightings yet</strong><small>Log the shelf price when you see one &mdash; your stores beat any state list.</small>`}
+          </div>
+        </div>
+        <div class="price-sighting-row">
+          <label class="field price-field">
+            <span>Price you see</span>
+            <input id="storePrice" type="number" min="0" step="1" value="${canLog ? entered : ""}" inputmode="decimal" placeholder="e.g. 42">
+          </label>
+          <button class="primary-button price-log-btn" type="button" data-action="log-price"${canLog ? "" : " disabled"}>${canLog ? "Log " + rec.money(entered) : "Log it"}</button>
+        </div>
+        ${obs.length ? `<div class="price-log-list">${obs.slice(0, 6).map((o, i) => `<span class="price-pill">${rec.money(o.price)}${o.store ? " &middot; " + escapeHtml(o.store) : ""}<button class="price-x" type="button" data-action="remove-price" data-idx="${i}" aria-label="Remove sighting">&times;</button></span>`).join("")}</div>` : ""}
+      </section>
+    `;
+  }
+
+  // The verdict scorecard: Price check mode only.
+  function renderVerdictScorecard(ctx) {
     if (!ctx.ui.scorecardOpen) return "";
     const bottle = getActiveBottle(ctx);
     if (!bottle) return "";
@@ -1397,13 +2134,7 @@
     const priceEntered = Number.isFinite(entered) && entered > 0;
     const basis = priceEntered ? entered : (bottle.observedPrice || bottle.shelfAverage || rec.getReferencePrice(bottle));
     const haveBasis = Number.isFinite(basis) && basis > 0;
-    const result = rec.scoreBottleDecision({
-      bottle,
-      shelfPrice: basis,
-      palate: ctx.palate,
-      friends: ctx.friends,
-      status: ctx.state.statuses[bottle.id]
-    });
+    const result = decide(ctx, bottle, basis);
     const showVerdict = priceEntered || (isShelf && haveBasis);
     const verdictClass = showVerdict ? "decision-" + result.decision.toLowerCase() : "decision-awaiting";
     const basisNote = (!priceEntered && isShelf && haveBasis)
@@ -1442,12 +2173,12 @@
             </label>
             ${renderPriceChips(ctx, bottle)}
           </div>
-          <p class="decision-summary">${showVerdict ? escapeHtml(result.summary) : "Enter the shelf price to get your Buy / Consider / Pass call."}${basisNote ? ` <span class="muted-note">${escapeHtml(basisNote)}</span>` : ""}</p>
+          <p class="decision-summary">${showVerdict ? escapeHtml(result.summary) : "Enter the shelf price to get your Buy / Consider / Pass call."}${basisNote ? ` <span class="muted-note">${escapeHtml(basisNote)}</span>` : ""}${showVerdict && result.evidenceNote ? ` <span class="muted-note">${escapeHtml(result.evidenceNote)}</span>` : ""}</p>
           <div class="decision-metrics">
             ${metric("MSRP", rec.money(bottle.msrp))}
             ${metric("Reference", getReferencePriceMetric(bottle))}
-            ${metric("Palate fit", Math.round((result.palateMatch || 0) * 100) + "%")}
-            ${metric("Friends", result.friendAverage ? result.friendAverage.toFixed(1) : "--")}
+            ${metric(palateFitLabel(result), palateFitValue(result))}
+            ${metric("Club", result.friendAverage ? result.friendAverage.toFixed(1) : "--")}
           </div>
           ${renderScorecardReviews(ctx, bottle)}
           ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
@@ -1463,16 +2194,25 @@
           </div>
           <details class="scorecard-more">
             <summary>Full details</summary>
-            ${showVerdict ? renderDecisionTrustStack(ctx, bottle, result) : ""}
-            ${renderObservedPrices(ctx, bottle)}
-            ${renderMarketReality(ctx, bottle)}
-            ${renderPriceWindow(bottle, result)}
-            ${renderBottleIntelligence(ctx, bottle, result)}
-            ${renderReviewIntelligence(ctx, bottle)}
-            ${renderBottleDossier(ctx, bottle, result)}
-            ${renderCocktailLane(ctx, bottle)}
-            ${renderIdentityPanel(ctx, bottle)}
-            ${renderBottleScout(ctx, bottle)}
+            <div class="scorecard-group">
+              <h4>Price &amp; market</h4>
+              ${renderPriceWindow(bottle, result)}
+              ${renderObservedPrices(ctx, bottle)}
+              ${renderMarketReality(ctx, bottle)}
+            </div>
+            <div class="scorecard-group">
+              <h4>Reviews &amp; pairing</h4>
+              ${renderReviewIntelligence(ctx, bottle)}
+              ${renderCocktailLane(ctx, bottle)}
+            </div>
+            <details class="scorecard-data">
+              <summary>Data quality &amp; sources</summary>
+              ${showVerdict ? renderDecisionTrustStack(ctx, bottle, result) : ""}
+              ${renderBottleIntelligence(ctx, bottle, result)}
+              ${renderBottleDossier(ctx, bottle, result)}
+              ${renderIdentityPanel(ctx, bottle)}
+              ${renderBottleScout(ctx, bottle)}
+            </details>
           </details>
         </section>
       </div>
@@ -1531,10 +2271,11 @@
     const query = (ctx.ui.identityQuery || "").trim().toLowerCase();
     let results = [];
     if (query.length >= MIN_SEARCH_CHARS) {
+      const tokens = queryTokens(query);
       for (const candidate of ctx.bottles) {
         if (results.length >= 6) break;
         if (candidate.id === bottle.id) continue;
-        if (candidate._searchText.includes(query)) results.push(candidate);
+        if (matchesQuery(candidate._searchText, tokens)) results.push(candidate);
       }
     }
     return `
@@ -1586,21 +2327,19 @@
 
   function renderStore(ctx) {
     const importedCount = ctx.catalogMeta.importedBottleCount || Math.max(0, ctx.bottles.length - 10);
-    const fullCount = ctx.catalogMeta.fullBottleCount || importedCount;
-    const rawCatalogNote = fullCount > importedCount
-      ? ` Raw source pool: ${fullCount.toLocaleString("en-US")} records kept behind the confidence gate.`
-      : "";
     return `
       <section class="section-stack store-stack">
         <section class="search-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Store Mode</p>
-              <h2>Buy window</h2>
+              <p class="eyebrow">Bottles</p>
+              <h2>${priceCheckEnabled(ctx) ? "Buy window" : "Look up a bottle"}</h2>
             </div>
             <button class="scan-button" type="button" data-action="scan-open" title="Scan a bottle's barcode">Scan</button>
           </div>
-          <p class="source-note">Search ${importedCount.toLocaleString("en-US")} confident source-backed records — or tap Scan and point your camera at the barcode. Tap a bottle for its scorecard: your Buy / Consider / Pass call at the price you see.${rawCatalogNote}</p>
+          <p class="source-note">${priceCheckEnabled(ctx)
+            ? `Search ${importedCount.toLocaleString("en-US")} bottles or scan the barcode. Tap a bottle, enter the shelf price, and get the call: Buy, Consider, or Pass.`
+            : `Search ${importedCount.toLocaleString("en-US")} bottles or scan the barcode. Tap one for its card: what it is, what it lists for, your pours, and what the room thinks.`}</p>
           ${ctx.ui.lastScanCode ? `<p class="scan-pending">Unmatched barcode <b>${escapeHtml(ctx.ui.lastScanCode)}</b> — open the right bottle's scorecard and tap “Link scanned code”, or <button class="link-inline" type="button" data-action="scan-dismiss">dismiss</button>.</p>` : ""}
           <label class="field">
             <span>Bottle</span>
@@ -1807,8 +2546,6 @@
             `).join("")}
           </div>
         ` : ""}
-
-        ${renderBottleScout(ctx, bottle)}
       </section>
     `;
   }
@@ -2055,7 +2792,10 @@
   }
 
   function getBottleSourceRefs(bottle) {
-    return bottle.sourceRefs || bottle.sourcePreview || [];
+    if (Array.isArray(bottle.sourceRefs) && bottle.sourceRefs.length) return bottle.sourceRefs;
+    if (Array.isArray(bottle.sourcePreview) && bottle.sourcePreview.length) return bottle.sourcePreview;
+    const ids = bottle.sourceSummary && Array.isArray(bottle.sourceSummary.sourceIds) ? bottle.sourceSummary.sourceIds : [];
+    return ids.map((sourceId) => ({ sourceId }));
   }
 
   function getPriceWindow(bottle, result) {
@@ -2193,11 +2933,11 @@
 
   function renderSourceIntel(bottle) {
     const summary = bottle.sourceSummary || {};
-    const sourceCount = summary.sourceCount || (bottle.sourceRefs || bottle.sourcePreview || []).length;
+    const sourceCount = summary.sourceCount || getBottleSourceRefs(bottle).length;
     if (!sourceCount) return "";
     const priceRange = getSourcePriceRange(summary);
     const regions = (summary.regions || []).slice(0, 5).join(", ");
-    const preview = (bottle.sourceRefs || bottle.sourcePreview || [])
+    const preview = getBottleSourceRefs(bottle)
       .slice(0, 4)
       .map((source) => source.sourceId.replace(/_/g, " "))
       .join(" / ");
@@ -2254,7 +2994,7 @@
       <div class="bottle-hero">
         ${bottleVisual(bottle)}
         <div class="bottle-copy">
-          <span class="status-pill">${statusLabel(ctx.state.statuses[bottle.id])}</span>
+          ${statusLabel(ctx.state.statuses[bottle.id]) ? `<span class="status-pill">${escapeHtml(statusLabel(ctx.state.statuses[bottle.id]))}</span>` : ""}
           <h2>${escapeHtml(bottle.name)}</h2>
           <p>${escapeHtml(getBottleMaker(bottle))} / ${escapeHtml(bottle.category)}</p>
           ${renderSourceLine(bottle)}
@@ -2272,20 +3012,48 @@
     const status = ctx.state.statuses[bottle.id] || "none";
     const friendAvg = rec.getFriendAverage(bottle.id, ctx.friends);
     const proofText = bottle.proofDisplay || (bottle.proof ? bottle.proof + " proof" : "proof n/a");
+    const sizeText = isStandardSize(bottle) ? "" : " / " + String(bottle.size || "").replace(/\s+/g, "");
     return `
       <button class="mini-bottle${active}" type="button" data-open-card="${escapeAttr(bottle.id)}" data-card-context="store">
         ${bottleVisual(bottle)}
         <span class="mini-main">
           <strong>${escapeHtml(bottle.name)}</strong>
-          <small>${escapeHtml(getBottleMaker(bottle))} / ${escapeHtml(proofText)}</small>
-          <span class="mini-tags">
-            <span>${escapeHtml(confidenceLabel(bottle) || bottle.rarity)}</span>
-            <span>${statusLabel(status)}</span>
-            ${bottle._variantCount > 1 ? `<span class="variant-chip">${bottle._variantCount} listings</span>` : `<span>${friendAvg ? friendAvg.toFixed(1) + " club" : "no club score"}</span>`}
-          </span>
+          <small>${escapeHtml(getBottleMaker(bottle))} / ${escapeHtml(proofText)}${escapeHtml(sizeText)}</small>
+          <span class="mini-tags">${renderMiniChips(ctx, bottle, status, friendAvg)}</span>
         </span>
       </button>
     `;
+  }
+
+  // Chips that help a buyer in an aisle: the price to expect, whether the bottle
+  // is even a shelf buy, your own status, the club's score, and how many catalog
+  // listings collapsed into this row. Never "New" or "no club score".
+  function renderMiniChips(ctx, bottle, status, friendAvg) {
+    const chips = [];
+    if (priceCheckEnabled(ctx)) {
+      const priceInfo = rec.getReferencePriceInfo
+        ? rec.getReferencePriceInfo(bottle)
+        : { value: rec.getReferencePrice(bottle), type: "none" };
+      if (Number.isFinite(priceInfo.value) && priceInfo.type !== "none") {
+        const label = priceInfo.type === "observed" ? "you saw"
+          : priceInfo.type === "msrp" || priceInfo.type === "msrp-allocated" ? "MSRP"
+            : priceInfo.type === "secondary" ? "secondary"
+              : priceInfo.type === "fair" ? "fair"
+                : "typical";
+        chips.push(`<span class="chip-price">${rec.money(priceInfo.value)} ${escapeHtml(label)}</span>`);
+      }
+    } else {
+      const shown = displayPrice(bottle);
+      if (shown) chips.push(`<span class="chip-price">${rec.money(shown.value)} ${escapeHtml(shown.label)}</span>`);
+    }
+    const P = global.BarrelPalate;
+    const avail = P && P.availability ? P.availability(bottle) : null;
+    if (avail && avail.tier === "allocated") chips.push(`<span class="chip-allocated">Allocated</span>`);
+    if (avail && avail.tier === "unicorn") chips.push(`<span class="chip-unicorn">Unicorn</span>`);
+    if (status && status !== "none") chips.push(`<span class="chip-status">${escapeHtml(statusLabel(status))}</span>`);
+    if (friendAvg) chips.push(`<span class="chip-club">${friendAvg.toFixed(1)} club</span>`);
+    if (bottle._variantCount > 1) chips.push(`<span class="variant-chip">${bottle._variantCount} listings</span>`);
+    return chips.join("");
   }
 
   function confidenceLabel(bottle) {
@@ -2308,7 +3076,7 @@
                 <h2>Classic bourbon cocktails</h2>
               </div>
             </div>
-            <p class="source-note">Specs are curated house standards for premium service. Bottle fit is matched against the active bottle in Store Mode.</p>
+            <p class="source-note">Specs are curated house standards for premium service. Bottle fit is matched against the active bottle in Bottles.</p>
           </section>
           <div class="cocktail-card-grid">
             ${ranked.map((item) => renderCocktailCard(ctx, item)).join("")}
@@ -2739,7 +3507,15 @@
     const q = (ctx.ui.showdownQuery || "").trim().toLowerCase();
     let results = [];
     if (q.length >= 2) {
-      results = ctx.bottles.filter((bo) => (bo._searchText || bo.name.toLowerCase()).includes(q)).slice(0, 8);
+      const tokens = queryTokens(q);
+      const raw = [];
+      for (const bo of ctx.bottles) {
+        if (raw.length >= 120) break;
+        if (matchesQuery(bo._searchText || bo.name.toLowerCase(), tokens)) raw.push(bo);
+      }
+      results = collapseVariants(ctx, raw);
+      results.sort((left, right) => scoreSearchResult(right, q) - scoreSearchResult(left, q));
+      results = results.slice(0, 8);
     }
     return `
       <div class="sd-picker">
@@ -2854,13 +3630,24 @@
     return `<div class="search-panel"><div class="panel-heading"><h3>Notable upsets</h3></div><p class="source-note">Lower-tier bottles that beat a pricier or more hyped pour — the blind results most worth trusting.</p><div class="sd-upsets">${upsets.slice(0, 8).map((u) => `<div class="sd-upset"><strong>${escapeHtml(shortName(u.winner.name))}</strong><span>beat</span><em>${escapeHtml(shortName(u.loser.name))}</em><i>+${u.gap} tier gap</i></div>`).join("")}</div></div>`;
   }
 
+  // The first-run profile seeds the recommender until real pours take over.
+  function profileSeed(ctx) {
+    const profile = ctx.state.profile || {};
+    const hasProfile = (Array.isArray(profile.flavors) && profile.flavors.length > 0) || Boolean(profile.proofComfort);
+    if (!hasProfile) return null;
+    return {
+      flavors: (ctx.palate && ctx.palate.favoriteProfiles) || [],
+      proofPreference: ctx.palate ? ctx.palate.proofPreference : null
+    };
+  }
+
   function forYouData(ctx) {
     const statuses = ctx.state.statuses || {};
     const sig = (ctx.state.tastings || []).length + "|" + (ctx.state.matchups || []).length + "|" +
-      Object.entries(statuses).sort().map((e) => e[0] + e[1]).join(",");
+      Object.entries(statuses).sort().map((e) => e[0] + e[1]).join(",") + "|" + JSON.stringify(ctx.state.profile || {});
     if (ctx._forYou && ctx._forYou.sig === sig) return ctx._forYou;
     const P = global.BarrelPalate;
-    const deps = { families: global.BarrelFamilies, rec };
+    const deps = { families: global.BarrelFamilies, rec, seed: profileSeed(ctx) };
     const byId = getBottlesById(ctx);
     const profile = P.buildProfile(ctx.state, byId, deps);
     const recs = P.recommend(ctx.bottles, profile, ctx.state, deps);
@@ -2913,12 +3700,12 @@
               <h2>For you</h2>
             </div>
           </div>
-          <p class="source-note">Connoisseur-grade picks tuned to your taste. The <strong>Buy this</strong> lane is bottles you can actually find at a fair price &mdash; never allocated unicorns dressed up as shelf buys. The more you log in Tastings and Showdown, the sharper it gets.</p>
+          <p class="source-note">Picks tuned to your taste. The <strong>Findable</strong> lane is bottles you can actually walk out with &mdash; never allocated unicorns dressed up as shelf finds. The more you log in Tastings and Showdown, the sharper it gets.</p>
           ${renderPalateSummary(ctx, data.profile)}
         </div>
         ${renderGetStarted(ctx)}
         ${renderPourTonight(ctx, data.profile)}
-        ${renderRecLane(ctx, "Buy this", "Findable picks for your palate, at prices you'll actually pay.", data.recs.buyNow, "buy")}
+        ${renderRecLane(ctx, priceCheckEnabled(ctx) ? "Buy this" : "Findable for you", priceCheckEnabled(ctx) ? "Findable picks for your palate, at prices you'll actually pay." : "On shelves and a fit for your palate, with the list price to expect.", data.recs.buyNow, "buy")}
         ${data.recs.grails.length ? renderRecLane(ctx, "Grails to chase", "Your taste would love these, but they're allocated. Chase them honestly — they're not shelf buys.", data.recs.grails, "grail") : ""}
         ${!data.recs.buyNow.length && !data.recs.grails.length ? emptyState("Rate a few bottles in Tastings or run a Showdown round, and your recommendations appear here.") : ""}
       </section>
@@ -2937,15 +3724,15 @@
     const styles = P.topEntries(profile.styleScores, 3).map((e) => P.simpleStyle(e[0]));
     const houses = P.topEntries(profile.distilleryScores, 3).map((e) => e[0]);
     const flavors = P.topEntries(profile.flavorScores, 4).map((e) => e[0]);
-    const proof = Number.isFinite(profile.proofPreference) ? Math.round(profile.proofPreference) + " pf" : "—";
-    return `
-      <div class="palate-summary">
-        ${palateChip("Leans", styles.join(", "))}
-        ${palateChip("Houses", houses.join(", "))}
-        ${palateChip("Flavors", flavors.join(", "))}
-        ${palateChip("Sweet spot", proof)}
-      </div>
-    `;
+    const chips = [];
+    if (styles.length) chips.push(palateChip("Leans", styles.join(", ")));
+    if (houses.length) chips.push(palateChip("Houses", houses.join(", ")));
+    if (flavors.length) chips.push(palateChip("Flavors", flavors.join(", ")));
+    if (Number.isFinite(profile.proofPreference)) chips.push(palateChip("Sweet spot", Math.round(profile.proofPreference) + " proof"));
+    const note = profile.interactions
+      ? ""
+      : `<p class="source-line palate-note">Tuned from your profile so far. Log a pour, run a Showdown, or build your shelf and this sharpens fast.</p>`;
+    return `<div class="palate-summary">${chips.join("")}</div>${note}`;
   }
 
   function renderRecLane(ctx, title, subtitle, items, kind) {
@@ -3328,9 +4115,10 @@
       return `<p class="result-summary">Start typing — two letters is enough.</p>`;
     }
     const raw = [];
+    const tokens = queryTokens(query);
     for (const bottle of ctx.bottles) {
       if (raw.length >= 200) break;
-      if (bottle._searchText.includes(query)) raw.push(bottle);
+      if (matchesQuery(bottle._searchText, tokens)) raw.push(bottle);
     }
     const collapsed = collapseVariants(ctx, raw);
     collapsed.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
@@ -3378,6 +4166,26 @@
     const totals = C ? C.totals(ctx.state) : { lines: 0, bottles: 0 };
     const tastedIds = new Set(ctx.state.tastings.map((tasting) => tasting.bottleId));
     const stillToTaste = ownedBottles.filter((bottle) => !tastedIds.has(bottle.id)).length;
+    if (!totals.bottles && !bottles.length && ctx.ui.shelfFilter === "all") {
+      return `
+        <section class="section-stack">
+          <div class="empty-hero">
+            <p class="eyebrow">Your shelf</p>
+            <h3>Nothing on the shelf yet</h3>
+            <p>Add what you own and Barrel Proof starts working for you: For You learns your taste, Showdown pulls from your bottles, and your club card carries your shelf to the group.</p>
+            <div class="empty-hero-actions">
+              <button class="primary-button" type="button" data-wiz="open">Build your shelf</button>
+              <button class="ghost-button" type="button" data-action="quick-open">Quick add</button>
+            </div>
+            <div class="empty-hero-steps">
+              <div><b>1</b><span>Tap the distilleries you collect, then the bottles you own — no typing.</span></div>
+              <div><b>2</b><span>Or search and tap in Quick add to rip through a whole cabinet.</span></div>
+              <div><b>3</b><span>Wishlist and Pass log fill in from any bottle's scorecard.</span></div>
+            </div>
+          </div>
+        </section>
+      `;
+    }
     return `
       <section class="section-stack">
         <div class="shelf-cta">
@@ -3391,7 +4199,7 @@
           </span>
         </div>
         <div class="insight-grid">
-          ${insight("Shelf value", ownedValues.length ? rec.money(ownedValue) : "n/a", unknownOwnedValue ? unknownOwnedValue + " owned without value" : "fair value estimate")}
+          ${insight("Shelf value", ownedValues.length ? rec.money(ownedValue) : "n/a", unknownOwnedValue ? unknownOwnedValue + " owned without a price" : "at list prices")}
           ${insight("Still to taste", stillToTaste, ownedBottles.length ? "owned, no pour logged" : "nothing owned yet")}
           ${insight("Open targets", countStatus(ctx, "wishlist"), "wishlist bottles")}
           ${insight("Tastings", ctx.state.tastings.length, "logged pours")}
@@ -3495,22 +4303,41 @@
   }
 
   function renderShelfCard(ctx, bottle) {
-    const result = rec.scoreBottleDecision({
-      bottle,
-      shelfPrice: bottle.shelfAverage,
-      palate: ctx.palate,
-      friends: ctx.friends,
-      status: ctx.state.statuses[bottle.id]
-    });
     const C = global.BarrelCollection;
     const entry = C ? C.entry(ctx.state, bottle.id) : null;
     const count = entry ? entry.count : 0;
     const batches = entry && entry.batches ? entry.batches : [];
+    if (!priceCheckEnabled(ctx)) {
+      const canonId = resolveIdentity(ctx, bottle.id);
+      const pours = (ctx.state.tastings || []).filter((tasting) => resolveIdentity(ctx, tasting.bottleId) === canonId && Number.isFinite(Number(tasting.score)));
+      const avg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+      const story = bottle.story && !/^Source-backed catalog record/i.test(bottle.story) && !/source-backed catalog record from/i.test(bottle.story) ? bottle.story : bottleFactLine(bottle);
+      return `
+        <article class="shelf-card shelf-card-tap" data-tone="${escapeAttr(bottle.imageTone)}" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf" role="button" tabindex="0" aria-label="Open ${escapeAttr(bottle.name)}">
+          <div class="shelf-card-top">
+            ${bottleVisual(bottle)}
+            ${statusLabel(ctx.state.statuses[bottle.id]) ? `<span class="status-pill">${escapeHtml(statusLabel(ctx.state.statuses[bottle.id]))}</span>` : ""}
+            ${count > 1 ? `<span class="count-badge">&times;${count}</span>` : ""}
+          </div>
+          <h3>${escapeHtml(bottle.name)}</h3>
+          <p>${escapeHtml(story)}</p>
+          ${batches.length ? `<div class="shelf-batches">${batches.slice(0, 8).map((bt) => `<span>${escapeHtml(bt)}</span>`).join("")}</div>` : ""}
+          <div class="card-meter" aria-hidden="true">
+            <span style="width:${avg ? Math.round(avg * 10) : 0}%"></span>
+          </div>
+          <div class="card-footer">
+            <strong>${avg ? avg.toFixed(1) : "Not rated"}</strong>
+            <small>${pours.length ? pours.length + " pour" + (pours.length === 1 ? "" : "s") : "log a pour"}</small>
+          </div>
+        </article>
+      `;
+    }
+    const result = decide(ctx, bottle, bottle.shelfAverage || bottle.observedPrice || rec.getReferencePrice(bottle));
     return `
       <article class="shelf-card shelf-card-tap" data-tone="${escapeAttr(bottle.imageTone)}" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf" role="button" tabindex="0" aria-label="Open ${escapeAttr(bottle.name)} scorecard">
         <div class="shelf-card-top">
           ${bottleVisual(bottle)}
-          <span class="status-pill">${statusLabel(ctx.state.statuses[bottle.id])}</span>
+          ${statusLabel(ctx.state.statuses[bottle.id]) ? `<span class="status-pill">${escapeHtml(statusLabel(ctx.state.statuses[bottle.id]))}</span>` : ""}
           ${count > 1 ? `<span class="count-badge">&times;${count}</span>` : ""}
         </div>
         <h3>${escapeHtml(bottle.name)}</h3>
@@ -3913,11 +4740,16 @@
     const results = [];
     if (query.length >= MIN_SEARCH_CHARS) {
       const chosenSet = new Set(flight.bottleIds || []);
+      const tokens = queryTokens(query);
+      const raw = [];
       for (const bottle of ctx.bottles) {
-        if (results.length >= 8) break;
+        if (raw.length >= 120) break;
         if (chosenSet.has(bottle.id)) continue;
-        if (bottle._searchText.includes(query)) results.push(bottle);
+        if (matchesQuery(bottle._searchText, tokens)) raw.push(bottle);
       }
+      const ranked = collapseVariants(ctx, raw);
+      ranked.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
+      results.push(...ranked.slice(0, 8));
     }
     const canStart = chosen.length >= 2 && tasters.length >= 1;
     return `
@@ -4061,7 +4893,7 @@
   function saveFlight(ctx) {
     const flight = ctx.state.activeFlight;
     if (!flight) return;
-    const owner = (ctx.palate && ctx.palate.name) ? String(ctx.palate.name) : "";
+    const owner = ownerName(ctx);
     const date = new Date().toISOString().slice(0, 10);
     let logged = 0;
     if (owner) {
@@ -4096,12 +4928,8 @@
 
   function renderClub(ctx) {
     const hasFriends = ctx.friends.length > 0;
-    const ranked = rec.rankBottlesForStore({
-      bottles: getRecommendationCandidates(ctx),
-      palate: ctx.palate,
-      friends: ctx.friends,
-      statuses: ctx.state.statuses
-    }).slice(0, 5);
+    const name = ownerName(ctx);
+    const scoredPours = (ctx.state.tastings || []).filter((tasting) => Number.isFinite(Number(tasting.score))).length;
     return `
       <section class="club-layout">
         <section class="search-panel club-share-panel">
@@ -4111,34 +4939,87 @@
               <h2>${hasFriends ? ctx.friends.length + " in the room" : "Bring your group in"}</h2>
             </div>
           </div>
-          <p class="source-note">Share your card, then import your friends'. No accounts, no servers — everyone's ratings live in their own private files and merge into the group's Buy / Consider / Pass calls.</p>
+          <p class="source-note">Send your card as a link. Friends tap it and their app adds you — no accounts, no servers. Everyone's ratings stay on their own phone and show up on every bottle card as the room's take.</p>
           <div class="club-actions">
-            <button class="primary-button" type="button" data-action="club-share">Share my card</button>
-            <button class="ghost-button" type="button" data-action="club-add">Add a friend's card</button>
+            <button class="primary-button" type="button" data-action="club-share-link"${ctx.ui.shareBusy ? " disabled" : ""}>${ctx.ui.shareBusy ? "Preparing link…" : "Share my card"}</button>
+            <button class="ghost-button" type="button" data-action="club-add">Add a friend's card file</button>
+          </div>
+          ${ctx.ui.myShareUrl ? `<label class="field club-my-link"><span>Your card link</span><input type="text" readonly value="${escapeAttr(ctx.ui.myShareUrl)}" onclick="this.select()"></label>` : ""}
+          <div class="club-link-row">
+            <label class="field"><span>Paste a friend's link</span><input id="clubLinkInput" type="text" inputmode="url" autocomplete="off" placeholder="https://…#club=…" value="${escapeAttr(ctx.ui.clubLinkText || "")}" enterkeyhint="go"></label>
+            <button class="ghost-button" type="button" data-action="club-link-import">Add</button>
+          </div>
+          <div class="club-secondary">
+            <span class="sheet-fine">Your card: ${escapeHtml(name)} · ${scoredPours} scored pour${scoredPours === 1 ? "" : "s"} · ${countStatus(ctx, "owned")} owned</span>
+            <button class="link-inline" type="button" data-action="club-share">Download as a file instead</button>
           </div>
         </section>
-        <div class="friend-grid">
-          ${ctx.friends.map((friend) => renderFriend(ctx, friend)).join("") || emptyState("No friends in your club yet. Tap “Add a friend's card” to import the file a friend shared with you.")}
-        </div>
+        ${hasFriends ? `<div class="friend-grid">${ctx.friends.map((friend) => renderFriend(ctx, friend)).join("")}</div>` : renderClubHowItWorks()}
         ${renderClubConsensus(ctx)}
-        <section class="club-rankings">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">${hasFriends ? "Group signal" : "Personal model"}</p>
-              <h2>${hasFriends ? "Best buys for the room" : "Best buys before friend ratings"}</h2>
-            </div>
+        ${hasFriends && priceCheckEnabled(ctx) ? renderClubBestBuys(ctx) : ""}
+      </section>
+    `;
+  }
+
+  function renderClubHowItWorks() {
+    return `
+      <div class="empty-hero">
+        <p class="eyebrow">How the club works</p>
+        <h3>Your friends' palates, in your pocket</h3>
+        <p>Once a few cards are in, every bottle card shows what the room thinks, and the bottles your crew actually loved rise to the top of Club.</p>
+        <div class="empty-hero-steps">
+          <div><b>1</b><span>Tap <strong>Share my card</strong> and send the link to your group chat.</span></div>
+          <div><b>2</b><span>Friends open the link on their phone and tap <strong>Add to my club</strong>.</span></div>
+          <div><b>3</b><span>Re-share any time you log more pours — a newer card replaces the old one.</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Findable bottles only (the same rule as For You: never recommend what you
+  // cannot buy), each judged at the price you would actually pay.
+  function renderClubBestBuys(ctx) {
+    const P = global.BarrelPalate;
+    const buyable = getRecommendationCandidates(ctx).filter((bottle) => {
+      if (!Number.isFinite(rec.getReferencePrice(bottle))) return false;
+      return !P || !P.availability || P.availability(bottle).buyable;
+    });
+    const candidates = collapseVariants(ctx, buyable);
+    const shelfPrices = {};
+    for (const bottle of candidates) {
+      const realistic = P && P.realisticPrice ? P.realisticPrice(bottle, rec) : null;
+      shelfPrices[bottle.id] = bottle.observedPrice
+        || (realistic && Number.isFinite(realistic.value) ? realistic.value : null)
+        || bottle.shelfAverage
+        || rec.getReferencePrice(bottle);
+    }
+    const ranked = rec.rankBottlesForStore({
+      bottles: candidates,
+      shelfPrices,
+      palate: ctx.palate,
+      friends: ctx.friends,
+      statuses: ctx.state.statuses
+    }).slice(0, 5);
+    if (!ranked.length) return "";
+    return `
+      <section class="club-rankings">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Group signal</p>
+            <h2>Best buys for the room</h2>
+            <p class="source-line">Findable bottles at typical shelf prices, with the club's ratings folded in.</p>
           </div>
-          ${ranked.map((item, index) => `
-            <article class="rank-row">
-              <span>${index + 1}</span>
-              <div>
-                <strong>${escapeHtml(item.bottle.name)}</strong>
-                <small>${escapeHtml(item.result.summary)}</small>
-              </div>
-              <b>${item.result.confidence}</b>
-            </article>
-          `).join("")}
-        </section>
+        </div>
+        ${ranked.map((item, index) => `
+          <button class="rank-row board-row" type="button" data-open-card="${escapeAttr(item.bottle.id)}" data-card-context="store">
+            <span>${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.bottle.name)}</strong>
+              <small>${escapeHtml(item.result.summary)}</small>
+            </div>
+            <b>${item.result.confidence}</b>
+          </button>
+        `).join("")}
       </section>
     `;
   }
@@ -4800,7 +5681,7 @@
     const summaryCount = bottle.sourceSummary && Number.isFinite(bottle.sourceSummary.sourceCount)
       ? bottle.sourceSummary.sourceCount
       : 0;
-    const refCount = (bottle.sourceRefs || bottle.sourcePreview || []).length;
+    const refCount = getBottleSourceRefs(bottle).length;
     return Math.max(summaryCount, refCount);
   }
 
@@ -4937,11 +5818,14 @@
     const query = (ctx.ui.tastingQuery || "").trim().toLowerCase();
     if (query.length >= MIN_SEARCH_CHARS) {
       const raw = [];
+      const tokens = queryTokens(query);
       for (const bottle of ctx.bottles) {
         if (raw.length >= 200) break;
-        if (bottle._searchText.includes(query)) raw.push(bottle);
+        if (matchesQuery(bottle._searchText, tokens)) raw.push(bottle);
       }
-      for (const bottle of collapseVariants(ctx, raw).slice(0, 40)) {
+      const ranked = collapseVariants(ctx, raw);
+      ranked.sort((left, right) => scoreSearchResult(right, query) - scoreSearchResult(left, query));
+      for (const bottle of ranked.slice(0, 40)) {
         byId.set(bottle.id, bottle);
       }
     } else {
@@ -5014,14 +5898,25 @@
   // The catalog carries many state-by-state spellings of the same bottle
   // ("Eagle Rare 10Y", "Eagle Rare 10YR Bourbon", ...). Display surfaces group
   // them by the collection lineKey and show the best representative.
+  // Search surfaces group by PRODUCT (one row per expression), never by the
+  // wizard's batch line — that coarser key folded every Weller expression into
+  // one "Weller 12Y" result. See BarrelCollection.productKey.
   function bottleLineKey(ctx, bottle) {
     if (!bottle._lineKey) {
       const C = global.BarrelCollection;
-      bottle._lineKey = C && C.lineKey ? C.lineKey(bottle) : bottle.id;
+      bottle._lineKey = C && C.productKey ? C.productKey(bottle) : (C && C.lineKey ? C.lineKey(bottle) : bottle.id);
     }
     return bottle._lineKey;
   }
 
+  function isStandardSize(bottle) {
+    const size = String(bottle && bottle.size || "").toLowerCase().replace(/\s+/g, "");
+    return !size || size === "750ml" || size === "700ml";
+  }
+
+  // Which listing represents a product group: the curated/seed copy first, then
+  // the best-verified standard-size bottle with the most price evidence. A
+  // 375ml or 1.75L listing must never front a group, or its price misleads.
   function variantRepScore(bottle) {
     let score = 0;
     if (bottle.curated) score += 100;
@@ -5030,7 +5925,26 @@
     else if (bottle.catalogConfidence === "priced-source") score += 20;
     if (!hasSourceRefs(bottle)) score += 30; // seed bottles have the rich curated copy
     if (Number.isFinite(bottle.msrp)) score += 15;
+    // Decision data is the whole point of a seed/curated record: a group that
+    // contains one must be fronted by it, or the buyer loses its price bands.
+    if (bottle.priceBands) score += 60;
+    if (Number.isFinite(bottle.fairPrice)) score += 30;
+    if (Number.isFinite(bottle.reviewScore)) score += 10;
+    // A 1.75L or 375ml listing must never front a group that has a 750ml: its
+    // price would become the buyer's basis for a different bottle.
+    if (isStandardSize(bottle)) score += 80;
+    else score -= 80;
+    if (Number.isFinite(bottle.proof)) score += 5;
+    const priceCount = bottle.sourceSummary && bottle.sourceSummary.priceObservationCount;
+    if (Number.isFinite(priceCount)) score += Math.min(priceCount * 2, 12);
     return score - String(bottle.name || "").length / 200;
+  }
+
+  function median(values) {
+    const clean = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+    if (!clean.length) return null;
+    const mid = Math.floor(clean.length / 2);
+    return clean.length % 2 ? clean[mid] : (clean[mid - 1] + clean[mid]) / 2;
   }
 
   function collapseVariants(ctx, bottles) {
@@ -5038,17 +5952,37 @@
     for (const bottle of bottles) {
       const key = bottleLineKey(ctx, bottle);
       const group = groups.get(key);
-      if (!group) {
-        groups.set(key, { bottle, count: 1 });
-      } else {
-        group.count += 1;
-        if (variantRepScore(bottle) > variantRepScore(group.bottle)) group.bottle = bottle;
-      }
+      if (!group) groups.set(key, { members: [bottle] });
+      else group.members.push(bottle);
     }
     const reps = [];
     for (const group of groups.values()) {
-      group.bottle._variantCount = group.count;
-      reps.push(group.bottle);
+      const members = group.members;
+      // A price far above the group's typical price is a size mix-up or a typo —
+      // it must not be the face of the group.
+      const typical = median(members.map((member) => member.sourceRetailPrice));
+      let best = null;
+      let bestScore = -Infinity;
+      let sourceCount = 0;
+      let priceCount = 0;
+      let curated = false;
+      for (const member of members) {
+        const summary = member.sourceSummary || {};
+        sourceCount += Number(summary.sourceCount) || 0;
+        priceCount += Number(summary.priceObservationCount) || 0;
+        if (member.curated || member.priceBands || !hasSourceRefs(member)) curated = true;
+        let score = variantRepScore(member);
+        if (Number.isFinite(typical) && typical > 0 && Number.isFinite(member.sourceRetailPrice) && member.sourceRetailPrice > typical * 3) score -= 60;
+        if (score > bestScore) {
+          bestScore = score;
+          best = member;
+        }
+      }
+      best._variantCount = members.length;
+      best._groupSourceCount = sourceCount;
+      best._groupPriceCount = priceCount;
+      best._groupCurated = curated;
+      reps.push(best);
     }
     return reps;
   }
@@ -5057,7 +5991,7 @@
   // single-barrel product like Blanton's, Four Roses, or Russell's Reserve.
   function isStorePick(bottle) {
     const name = String(bottle && bottle.name || "").toLowerCase();
-    return /\bbarrel select\b|\bbrl slct\b|single barrel select|\bstore pick\b|\bshop pick\b|\bbarrel pick\b|\bprivate (selection|barrel|stock|pick)\b|\bpersonal (selection|barrel)\b|\bhand[- ]?picked\b|\bexclusive\b|buy (the|entire) barrel|\(psb\)|\(sbs\)|\bpsb\b|\bsbs\b|selected by|chosen by|picked by/.test(name);
+    return /\bbarrel select\b|\b(?:brrl|brl|bbl)\s+(?:slct|select)\b|\bslct\b|single barrel select|\bstore pick\b|\bshop pick\b|\bbarrel pick\b|\bpriv(?:ate)?\.? (selection|select|barrel|stock|pick)\b|\bpersonal (selection|barrel)\b|\bhand[- ]?picked\b|\bexclusive\b|buy[- ](the|entire)[- ]barrel|\bbarrel program\b|\bfwgs\b|\(psb\)|\(sbs\)|\bpsb\b|\bsbs\b|selected by|chosen by|picked by/.test(name);
   }
 
   function getFilteredBottleInfo(ctx) {
@@ -5070,11 +6004,12 @@
       return { items: getDefaultStoreBottles(ctx), totalMatches: ctx.bottles.length, hiddenPicks: 0, mode, query };
     }
     const hidePicks = ctx.ui.storeHidePicks !== false;
+    const tokens = queryTokens(query);
     const matches = [];
     let totalMatches = 0;
     let hiddenPicks = 0;
     for (const bottle of ctx.bottles) {
-      if (hasQuery && !bottle._searchText.includes(query)) continue;
+      if (hasQuery && !matchesQuery(bottle._searchText, tokens)) continue;
       if (hasFilters && !matchesStoreFilters(bottle, filters)) continue;
       if (hidePicks && isStorePick(bottle)) { hiddenPicks += 1; continue; }
       totalMatches += 1;
@@ -5096,22 +6031,70 @@
     };
   }
 
+  // Ranking a search hit. The dominant signal is how much of the NAME the query
+  // accounts for: "rare breed" should surface "Wild Turkey Rare Breed" above
+  // "Wild Turkey Rare Breed Rye Barrel Proof". Evidence (sources, prices, the
+  // number of listings that collapsed into this row) breaks ties, and a rep
+  // whose price is absurd for a generic query is pushed down.
+  // "pappy 15" should find "Pappy Van Winkle Fam Res-15 YR": every word of the
+  // query has to appear somewhere in the bottle's search text, in any order,
+  // instead of the whole query as one contiguous substring.
+  function queryTokens(query) {
+    return String(query || "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+  }
+
+  // Numeric tokens match whole numbers only: "15" must not hit "115 proof" or a
+  // "151-019226" record id. Word tokens match as substrings (prefixes work).
+  function matchesQuery(text, tokens) {
+    if (!tokens.length) return false;
+    for (const token of tokens) {
+      if (/^\d+$/.test(token)) {
+        if (!new RegExp("(^|[^0-9])" + token + "([^0-9]|$)").test(text)) return false;
+      } else if (text.indexOf(token) === -1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function scoreSearchResult(bottle, query) {
     const name = String(bottle.name || "").toLowerCase();
-    const sourceCount = bottle.sourceSummary && bottle.sourceSummary.sourceCount ? bottle.sourceSummary.sourceCount : 0;
-    const priceCount = bottle.sourceSummary && bottle.sourceSummary.priceObservationCount ? bottle.sourceSummary.priceObservationCount : 0;
+    const sourceCount = Math.max(
+      bottle.sourceSummary && bottle.sourceSummary.sourceCount ? bottle.sourceSummary.sourceCount : 0,
+      Number(bottle._groupSourceCount) || 0
+    );
+    const priceCount = Math.max(
+      bottle.sourceSummary && bottle.sourceSummary.priceObservationCount ? bottle.sourceSummary.priceObservationCount : 0,
+      Number(bottle._groupPriceCount) || 0
+    );
+    const nameTokens = name.replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+    const queryTokens = query.replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+    const matched = queryTokens.filter((token) => nameTokens.some((part) => part === token || part.startsWith(token))).length;
+    const coverage = nameTokens.length ? matched / nameTokens.length : 0;
     let score = 0;
     if (name === query) score += 120;
-    if (name.startsWith(query)) score += 70;
+    if (name.startsWith(query)) score += 30;
     if (new RegExp("\\b" + escapeRegExp(query)).test(name)) score += 30;
-    if (!hasSourceRefs(bottle)) score += 40;
-    if (bottle.catalogConfidence === "verified") score += 36;
-    if (bottle.catalogConfidence === "cross-checked") score += 28;
-    if (bottle.catalogConfidence === "priced-source") score += 12;
-    score += Math.min(sourceCount * 3, 24);
-    score += Math.min(priceCount * 2, 16);
+    score += coverage * 100;
+    score -= Math.max(0, nameTokens.length - matched) * 6;
+    if (!hasSourceRefs(bottle) || bottle.curated || bottle.priceBands || bottle._groupCurated) score += 60;
+    if (bottle.catalogConfidence === "verified") score += 30;
+    if (bottle.catalogConfidence === "cross-checked") score += 22;
+    if (bottle.catalogConfidence === "priced-source") score += 10;
+    score += Math.min(sourceCount * 2, 20);
+    score += Math.min(priceCount * 1.5, 15);
+    score += Math.min((Number(bottle._variantCount) || 1) * 6, 36);
     if (getBottleMaker(bottle) !== "Unknown producer") score += 10;
+    if (Number.isFinite(bottle.proof)) score += 4;
+    if (!isStandardSize(bottle)) score -= 12;
     if (/\b(barrel select|buy the barrel|single barrel select|exclusive barrel)\b/i.test(name)) score -= 8;
+    if (!/\d/.test(query) && Number(bottle.sourceRetailPrice) >= 1500) score -= 80;
+    // A generic brand query ("eagle rare") means the shelf expression far more
+    // often than the unicorn; the unicorn is still one row down.
+    if (!/\d/.test(query) && global.BarrelPalate && global.BarrelPalate.availability) {
+      const tier = global.BarrelPalate.availability(bottle).tier;
+      if (tier === "unicorn") score -= 15;
+    }
     score -= Math.min(name.length / 40, 4);
     return score;
   }
@@ -5160,7 +6143,7 @@
 
   function renderSearchSummary(info) {
     if (info.mode === "idle") {
-      return `<p class="result-summary">Showing a short starter lane. Search the full catalog, or filter by type and release below.</p>`;
+      return `<p class="result-summary">A few classics to start. Search above for anything on the shelf, or filter by type and release.</p>`;
     }
     if (info.mode === "too-short") {
       return `<p class="result-summary">Keep typing. Full-catalog search starts at ${MIN_SEARCH_CHARS} characters.</p>`;
@@ -5202,8 +6185,22 @@
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
+  // Catalog rows often carry the distributor ("Bacardi U.S.A., Inc.",
+  // "Intercontinental Packaging Company") where a maker should be. Show the
+  // classified house instead whenever the taxonomy recognizes the bottle.
+  const SUPPLIER_LIKE = /\b(inc|llc|ltd|corp|co|company|distributing|distribution|distributors?|importers?|imports?|importing|packaging|beverages?|wholesale|usa|u\.s\.a|americas|international|intl|group|holdings|marketing|trading|sales)\b/i;
+
   function getBottleMaker(bottle) {
-    return bottle.distillery || bottle.producer || bottle.supplier || "Unknown producer";
+    const own = String(bottle.distillery || "").trim();
+    if (own && own !== "Unknown producer" && !SUPPLIER_LIKE.test(own)) return own;
+    const fam = global.BarrelFamilies;
+    if (fam && fam.classify) {
+      const cls = fam.classify(bottle);
+      if (cls && cls.matched) {
+        return /\(/.test(cls.distillery) ? (cls.brand || cls.distillery.replace(/\s*\(.*\)\s*$/, "")) : cls.distillery;
+      }
+    }
+    return own || bottle.producer || bottle.supplier || "Unknown producer";
   }
 
   function getBottleValue(bottle) {
@@ -5215,6 +6212,18 @@
     const price = rec.getSourceRetailPrice(bottle);
     if (!Number.isFinite(price)) return "n/a";
     return rec.money(price);
+  }
+
+  function palateFitLabel(result) {
+    const fit = result && result.palateFit;
+    if (fit && fit.basis === "proof") return "Proof fit";
+    return "Palate fit";
+  }
+
+  function palateFitValue(result) {
+    const fit = result && result.palateFit;
+    if (!fit || !fit.known) return "--";
+    return Math.round((fit.score || 0) * 100) + "%";
   }
 
   function getReferencePriceMetric(bottle) {
@@ -5246,16 +6255,17 @@
   }
 
   function renderSourceLine(bottle) {
+    const summary = bottle.sourceSummary || {};
     const sourceRefs = bottle.sourceRefs || bottle.sourcePreview || [];
-    const summaryCount = bottle.sourceSummary && bottle.sourceSummary.sourceCount ? bottle.sourceSummary.sourceCount : 0;
-    if (!sourceRefs.length && !summaryCount) {
-      return '<p class="source-line">Starter catalog record. Price fields are not source-verified yet.</p>';
+    const totalSources = summary.sourceCount || sourceRefs.length;
+    if (!totalSources) {
+      return '<p class="source-line">Curated bottle — prices are Barrel Proof reference values, not a state catalog.</p>';
     }
-    const totalSources = summaryCount || sourceRefs.length;
-    const labels = sourceRefs.slice(0, 3).map((source) => source.sourceId.replace(/_/g, " ")).join(", ");
-    const extra = totalSources > 3 ? " +" + (totalSources - 3) + " more" : "";
-    const labelText = labels ? ": " + escapeHtml(labels) + escapeHtml(extra) : "";
-    return `<p class="source-line">Source-backed by ${totalSources} record${totalSources === 1 ? "" : "s"}${labelText}</p>`;
+    const regions = Array.isArray(summary.regions) ? summary.regions.filter(Boolean) : [];
+    const regionText = regions.length
+      ? " · " + regions.slice(0, 5).join(", ") + (regions.length > 5 ? " +" + (regions.length - 5) : "")
+      : "";
+    return `<p class="source-line">Listed in ${totalSources} official catalog${totalSources === 1 ? "" : "s"}${escapeHtml(regionText)}</p>`;
   }
 
   function hasSourceRefs(bottle) {
@@ -5385,9 +6395,9 @@
       passed: "Passed",
       tasted: "Tasted",
       finished: "Finished",
-      none: "New"
+      none: ""
     };
-    return labels[status || "none"] || "New";
+    return labels[status || "none"] || "";
   }
 
   function average(values) {
@@ -5505,8 +6515,10 @@
           const next = store && store.normalizeState ? store.normalizeState(raw, defaults, { bottleIds }) : raw;
           for (const key of Object.keys(ctx.state)) delete ctx.state[key];
           Object.assign(ctx.state, next);
+          refreshPalate(ctx);
           refreshFriends(ctx);
           ctx._forYou = null;
+          ctx.ui.sheet = "";
           for (const b of ctx.bottles) {
             delete b.observedPrice;
             delete b.observedCount;
@@ -5587,14 +6599,29 @@
       .join(" ");
   }
 
+  const ICONS = {
+    download: '<path d="M12 3v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
+    upload: '<path d="M12 21V10"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/>',
+    rotate: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/>',
+    tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+    spark: '<path d="m12 3 2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.3l6.1-.7Z"/>',
+    shelf: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/><path d="M9 4v16"/>',
+    glass: '<path d="M7 3h10l-1.2 9.5A3.8 3.8 0 0 1 12 15.8a3.8 3.8 0 0 1-3.8-3.3L7 3Z"/><path d="M12 16v5M8.5 21h7"/>',
+    house: '<path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    versus: '<circle cx="7" cy="12" r="4"/><circle cx="17" cy="12" r="4"/>',
+    cocktail: '<path d="M4 4h16l-8 9-8-9Z"/><path d="M12 13v7M8 20h8"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
+    people: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 15.5a5 5 0 0 1 5.5 4.5"/>',
+    wrench: '<path d="M14.5 6.5a4 4 0 0 0 5.3 5.3L21 13a6 6 0 0 1-7.9 5.4L7 24.5 3.5 21l6.1-6.1A6 6 0 0 1 15 7Z"/>',
+    dots: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
+    share: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v7h14v-7"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'
+  };
+
   function icon(name) {
-    if (name === "download") {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>';
-    }
-    if (name === "upload") {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V10"></path><path d="m7 14 5-5 5 5"></path><path d="M5 4h14"></path></svg>';
-    }
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"></path><path d="M20 4v6h-6"></path></svg>';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || ICONS.rotate) + '</svg>';
   }
 
   function escapeHtml(value) {

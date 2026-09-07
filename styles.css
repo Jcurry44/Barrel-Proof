@@ -1,3 +1,24 @@
+/* Self-hosted variable fonts (SIL OFL, see fonts/LICENSE-*.txt). Served from the
+   same origin and precached by the service worker, so first paint never waits on
+   a third-party font CDN and the installed app looks right offline. */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/fraunces-latin-opsz-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/inter-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: dark;
   --bg: #0e0b0a;
@@ -4663,3 +4684,787 @@ button.wiz-line:hover {
 .quick-row.owned { border-color: rgba(112, 151, 104, 0.5); }
 .quick-row.owned .quick-badge { background: rgba(112, 151, 104, 0.2); color: #cfe4c5; }
 .variant-chip { color: var(--brass-strong) !important; }
+
+/* =====================================================================
+   Share-ready pass: profile, sheets, bottom navigation, empty states
+   ===================================================================== */
+
+/* ---------- Header: profile chip + menu ---------- */
+.header-actions {
+  align-items: center;
+}
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  max-width: 220px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.profile-chip:hover {
+  border-color: rgba(241, 205, 132, 0.45);
+  background: rgba(203, 163, 90, 0.08);
+  transform: translateY(-1px);
+}
+
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--brass-strong), var(--brass-deep));
+  color: #1b110b;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+
+.profile-chip.unset .profile-avatar {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted-strong);
+  border: 1px dashed var(--line-strong);
+}
+
+.profile-chip-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.profile-chip-text strong {
+  overflow: hidden;
+  color: var(--cream);
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-chip-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Generic bottom sheet (More, Profile, About, Club link) ---------- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(8, 5, 4, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: scfade 160ms ease;
+}
+
+.sheet-card {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  gap: 16px;
+  padding: 14px 18px calc(24px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--line-strong);
+  border-radius: 22px 22px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    var(--panel);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+  animation: scrise 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.sheet-grip {
+  justify-self: center;
+  width: 42px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-head p:not(.eyebrow) {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.sheet-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--muted-strong);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sheet-section {
+  display: grid;
+  gap: 8px;
+}
+
+.sheet-section > .eyebrow {
+  margin-bottom: 0;
+}
+
+.sheet-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.sheet-row:hover {
+  border-color: rgba(241, 205, 132, 0.4);
+  background: rgba(203, 163, 90, 0.07);
+  transform: translateY(-1px);
+}
+
+.sheet-row.active {
+  border-color: rgba(241, 205, 132, 0.55);
+  background: rgba(203, 163, 90, 0.14);
+}
+
+.sheet-row.danger {
+  border-color: rgba(178, 75, 68, 0.35);
+}
+
+.sheet-row.danger:hover {
+  border-color: rgba(178, 75, 68, 0.6);
+  background: rgba(178, 75, 68, 0.1);
+}
+
+.sheet-row-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(203, 163, 90, 0.12);
+  color: var(--brass-strong);
+}
+
+.sheet-row.danger .sheet-row-icon {
+  background: rgba(178, 75, 68, 0.14);
+  color: #f0b7a5;
+}
+
+.sheet-row-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.sheet-row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sheet-row-text strong {
+  color: var(--cream);
+  font-size: 0.95rem;
+  line-height: 1.15;
+}
+
+.sheet-row-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-row-end {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.sheet-toggle {
+  display: inline-block;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  transition: background 160ms ease;
+}
+
+.sheet-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cream);
+  transition: transform 160ms ease;
+}
+
+.sheet-toggle.on {
+  background: var(--brass);
+}
+
+.sheet-toggle.on::after {
+  transform: translateX(16px);
+}
+
+.sheet-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.sheet-actions .ghost-button {
+  width: 100%;
+}
+
+.sheet-fine {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+@media (min-width: 720px) {
+  .sheet-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet-card {
+    border-radius: 20px;
+    max-height: 88vh;
+    padding-bottom: 24px;
+  }
+
+  .sheet-grip {
+    display: none;
+  }
+}
+
+/* ---------- Profile / first-run sheet ---------- */
+.profile-sheet .field {
+  margin-top: 4px;
+}
+
+.comfort-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.comfort-option {
+  display: grid;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.comfort-option:hover {
+  border-color: rgba(241, 205, 132, 0.4);
+  transform: translateY(-1px);
+}
+
+.comfort-option.on {
+  border-color: rgba(241, 205, 132, 0.6);
+  background: rgba(203, 163, 90, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(241, 205, 132, 0.18);
+}
+
+.comfort-option strong {
+  color: var(--cream);
+  font-size: 0.9rem;
+  line-height: 1.15;
+}
+
+.comfort-option small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+.comfort-option.on strong {
+  color: var(--brass-strong);
+}
+
+.flavor-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.flavor-picker button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.flavor-picker button:hover {
+  border-color: rgba(241, 205, 132, 0.4);
+  transform: translateY(-1px);
+}
+
+.flavor-picker button.on {
+  border-color: rgba(241, 205, 132, 0.6);
+  background: rgba(203, 163, 90, 0.18);
+  color: var(--brass-strong);
+}
+
+.flavor-count {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .comfort-options {
+    grid-template-columns: 1fr;
+  }
+
+  .comfort-option {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Bottom navigation (phones) ---------- */
+.bottombar {
+  display: none;
+}
+
+.header-menu {
+  display: inline-grid;
+}
+
+@media (max-width: 719px) {
+  .app-shell {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .tabbar,
+  .header-menu {
+    display: none;
+  }
+
+  .header-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .header-stats div {
+    padding: 7px 6px;
+  }
+
+  .header-stats span {
+    font-size: 1rem;
+  }
+
+  .header-stats small {
+    font-size: 0.66rem;
+  }
+
+  .app-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px 14px 12px;
+  }
+
+  .header-stats {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .profile-chip {
+    max-width: 150px;
+    padding-right: 10px;
+  }
+
+  .profile-chip-text small {
+    display: none;
+  }
+
+  .bottombar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 95;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line-strong);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+      rgba(20, 15, 13, 0.92);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .bottom-tab {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    min-height: 52px;
+    padding: 6px 2px 4px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    transition: color 150ms ease, background 150ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bottom-tab svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.9;
+  }
+
+  .bottom-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bottom-tab.active {
+    color: var(--brass-strong);
+    background: rgba(203, 163, 90, 0.12);
+  }
+
+  .bottom-tab:active {
+    background: rgba(203, 163, 90, 0.18);
+  }
+
+  .bp-toast {
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+
+  .scorecard-card {
+    max-height: 94dvh;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ---------- Mini bottle result chips ---------- */
+.mini-tags .chip-price {
+  border-color: rgba(241, 205, 132, 0.4);
+  color: var(--brass-strong);
+  background: rgba(203, 163, 90, 0.1);
+}
+
+.mini-tags .chip-allocated {
+  border-color: rgba(210, 168, 91, 0.45);
+  color: var(--brass-strong);
+}
+
+.mini-tags .chip-unicorn {
+  border-color: rgba(178, 75, 68, 0.42);
+  color: #f0b7a5;
+  background: rgba(178, 75, 68, 0.1);
+}
+
+.mini-tags .chip-status {
+  border-color: rgba(112, 151, 104, 0.45);
+  color: #cfe4c5;
+  background: rgba(112, 151, 104, 0.1);
+}
+
+.mini-tags .chip-club {
+  border-color: rgba(90, 126, 155, 0.5);
+  color: #b8cad7;
+}
+
+/* ---------- Empty states with a next step ---------- */
+.empty-hero {
+  display: grid;
+  gap: 12px;
+  padding: 26px 22px;
+  border: 1px solid rgba(241, 205, 132, 0.25);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(203, 163, 90, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.empty-hero h3 {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--cream);
+  letter-spacing: -0.01em;
+}
+
+.empty-hero p {
+  color: var(--muted-strong);
+  line-height: 1.5;
+  max-width: 52ch;
+}
+
+.empty-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.empty-hero-actions .primary-button,
+.empty-hero-actions .ghost-button {
+  width: auto;
+  padding: 0 18px;
+}
+
+.empty-hero-steps {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.empty-hero-steps div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.empty-hero-steps b {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(203, 163, 90, 0.16);
+  color: var(--brass-strong);
+  font-size: 0.8rem;
+}
+
+/* ---------- Club share link ---------- */
+.club-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.club-link-row .field {
+  min-width: 0;
+}
+
+.club-share-panel .club-actions .primary-button {
+  width: auto;
+  padding: 0 18px;
+}
+
+.club-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+
+.club-secondary .link-inline {
+  font-size: 0.82rem;
+}
+
+/* ---------- Scorecard: grouped full details ---------- */
+.scorecard-group {
+  display: grid;
+  gap: 12px;
+}
+
+.scorecard-group > h4 {
+  margin: 4px 0 -2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.scorecard-data {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.scorecard-data > summary {
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+  font-weight: 700;
+  list-style: none;
+  padding: 6px 0;
+}
+
+.scorecard-data > summary::-webkit-details-marker {
+  display: none;
+}
+
+.scorecard-data > summary::after {
+  content: " \25be";
+  color: var(--muted);
+}
+
+.scorecard-data[open] > summary::after {
+  content: " \25b4";
+}
+
+.scorecard-data[open] {
+  display: grid;
+  gap: 14px;
+}
+
+/* ---------- About sheet stats ---------- */
+.about-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.about-stats div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.about-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.about-stats strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--cream);
+  font-size: 1.05rem;
+}
+
+.about-copy {
+  color: var(--muted-strong);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.palate-summary {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.palate-note {
+  margin-top: 10px;
+}
+
+/* Narrow phones: the profile chip collapses to its avatar so the brand line
+   never wraps. */
+@media (max-width: 480px) {
+  .profile-chip {
+    max-width: none;
+    gap: 0;
+    padding: 4px;
+  }
+
+  .profile-chip-text {
+    display: none;
+  }
+
+  .app-header .eyebrow {
+    white-space: nowrap;
+    font-size: 0.6rem;
+    letter-spacing: 0.18em;
+  }
+}
+
+/* ---------- Bottle card (companion mode) ---------- */
+.bottle-card-mode .card-eyebrow {
+  margin: 4px 0 10px;
+}
+
+.bottle-card-mode .decision-metrics {
+  margin-top: 2px;
+}
+
+.price-sighting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.price-sighting-row .price-log-btn {
+  min-height: 44px;
+}
+
+/* Four small facts fit two-up even on a narrow phone. */
+.bottle-card-mode .decision-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 720px) {
+  .bottle-card-mode .decision-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

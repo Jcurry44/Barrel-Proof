@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   mergeCatalogRecords,
+  normalizeWhitespace,
   unique
 } = require("../src/logic/catalog.js");
 
@@ -494,7 +495,50 @@ function scoreVisibleReleaseBottle(bottle) {
   return score;
 }
 
+// The shipped index is what every phone downloads and parses on launch, so it
+// carries only what the app reads. Aliases that merely repeat the display name
+// or a barcode/record id are dropped (search is case-insensitive and barcodes
+// have their own index), and per-record source previews collapse into the
+// summary's list of source ids.
+function slimAliases(bottle, recordIds) {
+  const name = normalizeWhitespace(String(bottle.name || "")).toLowerCase();
+  const codes = new Set([bottle.upc, ...(bottle.barcodes || [])].filter(Boolean).map(String));
+  const strippedCodes = new Set([...codes].map((code) => code.replace(/^0+/, "")));
+  const ids = new Set((recordIds || []).map(String));
+  const aliases = [];
+  const seen = new Set();
+  for (const alias of bottle.aliases || []) {
+    const clean = normalizeWhitespace(String(alias || ""));
+    const key = clean.toLowerCase();
+    if (!clean || key === name || seen.has(key)) continue;
+    if (/^\d+$/.test(key) && (codes.has(key) || strippedCodes.has(key.replace(/^0+/, "")) || ids.has(key))) continue;
+    seen.add(key);
+    aliases.push(clean);
+  }
+  return aliases;
+}
+
+// Re-slim an index bottle that was built by an earlier version of this tool
+// (one that still emitted sourcePreview and unpruned aliases). Idempotent.
+function slimIndexBottle(bottle) {
+  const preview = Array.isArray(bottle.sourcePreview) ? bottle.sourcePreview : [];
+  const recordIds = preview.map((ref) => ref && ref.sourceRecordId).filter(Boolean);
+  const previewIds = preview.map((ref) => ref && ref.sourceId).filter(Boolean);
+  const summary = bottle.sourceSummary || {};
+  const sourceIds = unique([...(summary.sourceIds || []), ...previewIds]);
+  const out = { ...bottle };
+  delete out.sourcePreview;
+  const aliases = slimAliases(bottle, recordIds);
+  if (aliases.length) out.aliases = aliases;
+  else delete out.aliases;
+  out.sourceSummary = compactObject({ ...summary, sourceIds });
+  return out;
+}
+
 function toIndexBottle(bottle) {
+  const sourceRefs = bottle.sourceRefs || [];
+  const sourceIds = unique(sourceRefs.map((sourceRef) => sourceRef.sourceId).filter(Boolean)).slice(0, 8);
+  const recordIds = sourceRefs.map((sourceRef) => sourceRef.sourceRecordId).filter(Boolean);
   return compactObject({
     id: bottle.id,
     name: bottle.name,
@@ -514,18 +558,14 @@ function toIndexBottle(bottle) {
     rarity: bottle.rarity,
     mashBill: bottle.mashBill === "Unknown" ? null : bottle.mashBill,
     imageTone: bottle.imageTone,
-    aliases: bottle.aliases || [],
+    aliases: slimAliases(bottle, recordIds),
     profile: bottle.profile || [],
     bestFor: bottle.bestFor || [],
     reviewScore: bottle.reviewScore,
     hypeIndex: bottle.hypeIndex,
     story: bottle.story,
     catalogConfidence: getCatalogConfidence(bottle),
-    sourceSummary: toIndexSourceSummary(bottle.sourceSummary),
-    sourcePreview: (bottle.sourceRefs || []).slice(0, 4).map((sourceRef) => ({
-      sourceId: sourceRef.sourceId,
-      sourceRecordId: sourceRef.sourceRecordId
-    }))
+    sourceSummary: toIndexSourceSummary(bottle.sourceSummary, sourceIds)
   });
 }
 
@@ -647,14 +687,15 @@ function looksLikeNonWhiskeyBottle(bottle) {
   return /\b(cocktail|cream|gift|glass|jigger|liqueur|mini(?:s|ature)?|moonshine|ready\s*to\s*(?:drink|serve|pour)|rtd|syrup|wine|beer|cider|seltzer)\b/i.test(fullText);
 }
 
-function toIndexSourceSummary(summary) {
+function toIndexSourceSummary(summary, sourceIds) {
   if (!summary) return null;
   return compactObject({
     sourceCount: summary.sourceCount,
     priceObservationCount: summary.priceObservationCount,
     minRetailPrice: summary.minRetailPrice,
     maxRetailPrice: summary.maxRetailPrice,
-    regions: summary.regions || []
+    regions: summary.regions || [],
+    sourceIds: sourceIds || summary.sourceIds || []
   });
 }
 
@@ -732,6 +773,7 @@ if (require.main === module) {
 module.exports = {
   buildAppCatalogPayload,
   buildIndexPayload,
+  slimIndexBottle,
   toAppBottle,
   toIndexBottle,
   writeJsonFile,

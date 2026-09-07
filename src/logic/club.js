@@ -143,10 +143,114 @@
     };
   }
 
+  // ---- Share links -----------------------------------------------------------
+  // Swapping JSON files between phones is the worst part of a no-server club.
+  // A card is small (name + ratings + favorites + owned ids), so it fits in a
+  // link: deflate when the runtime has CompressionStream ("z." prefix), plain
+  // JSON otherwise ("j." prefix), both base64url so the link survives chat apps.
+
+  const TOKEN_PLAIN = "j.";
+  const TOKEN_DEFLATE = "z.";
+
+  function bytesToBase64Url(bytes) {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    const base64 = typeof btoa === "function" ? btoa(binary) : Buffer.from(binary, "binary").toString("base64");
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function base64UrlToBytes(text) {
+    const base64 = String(text || "").replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(text || "").length + 3) % 4);
+    const binary = typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("binary");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function pipeThrough(bytes, stream) {
+    const response = new Response(new Blob([bytes]).stream().pipeThrough(stream));
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  function compactCard(card) {
+    return {
+      n: card.name,
+      s: card.style,
+      r: card.ratings || {},
+      f: card.favorites || [],
+      o: card.owned || []
+    };
+  }
+
+  function expandCard(compact) {
+    if (!compact || typeof compact !== "object") return null;
+    return normalizeCard({
+      source: CARD_APP,
+      name: compact.n,
+      style: compact.s,
+      ratings: compact.r,
+      favorites: compact.f,
+      owned: compact.o
+    });
+  }
+
+  async function buildShareToken(card) {
+    const clean = normalizeCard(card);
+    if (!clean) throw new Error("not a club card");
+    const json = JSON.stringify(compactCard(clean));
+    const bytes = new TextEncoder().encode(json);
+    if (typeof CompressionStream === "function" && typeof Response === "function" && typeof Blob === "function") {
+      try {
+        const packed = await pipeThrough(bytes, new CompressionStream("deflate-raw"));
+        return TOKEN_DEFLATE + bytesToBase64Url(packed);
+      } catch (error) {
+        // fall through to the plain token
+      }
+    }
+    return TOKEN_PLAIN + bytesToBase64Url(bytes);
+  }
+
+  async function parseShareToken(token) {
+    const text = String(token || "").trim();
+    if (!text) return null;
+    try {
+      let bytes;
+      if (text.startsWith(TOKEN_DEFLATE)) {
+        if (typeof DecompressionStream !== "function") return null;
+        bytes = await pipeThrough(base64UrlToBytes(text.slice(TOKEN_DEFLATE.length)), new DecompressionStream("deflate-raw"));
+      } else if (text.startsWith(TOKEN_PLAIN)) {
+        bytes = base64UrlToBytes(text.slice(TOKEN_PLAIN.length));
+      } else {
+        return null;
+      }
+      const json = new TextDecoder().decode(bytes);
+      return expandCard(JSON.parse(json));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // The token rides in the URL hash so it never hits a server log:
+  //   https://…/index.html#club=z.eJx…
+  function buildShareUrl(baseUrl, token) {
+    const base = String(baseUrl || "").split("#")[0];
+    return base + "#club=" + token;
+  }
+
+  function extractShareToken(urlOrHash) {
+    const text = String(urlOrHash || "");
+    const match = text.match(/#club=([A-Za-z0-9._\-]+)/);
+    return match ? match[1] : "";
+  }
+
   return {
     CARD_APP,
     average,
     bottleConsensus,
+    buildShareToken,
+    buildShareUrl,
+    extractShareToken,
+    parseShareToken,
     buildCardFromState,
     describeStyle,
     mergeFriend,

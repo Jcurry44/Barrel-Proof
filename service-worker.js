@@ -1,4 +1,4 @@
-const CACHE_NAME = "barrel-proof-shell-v46";
+const CACHE_NAME = "barrel-proof-shell-v47";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,8 @@ const SHELL_ASSETS = [
   "./icon-192.png",
   "./icon-512.png",
   "./apple-touch-icon.png",
+  "./fonts/fraunces-latin-opsz-normal.woff2",
+  "./fonts/inter-latin-wght-normal.woff2",
   "./src/data/bottles.js",
   "./src/data/friends.js",
   "./src/data/cocktails.js",
@@ -19,6 +21,7 @@ const SHELL_ASSETS = [
   "./src/logic/showdown.js",
   "./src/logic/recommendation.js",
   "./src/logic/palate.js",
+  "./src/logic/profile.js",
   "./src/logic/collection.js",
   "./src/logic/prices.js",
   "./src/logic/research.js",
@@ -36,15 +39,19 @@ const SHELL_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  // Fetch with cache: "reload" so a version bump always pulls fresh assets from
-  // the network, never a stale copy from the browser's HTTP cache.
+  // App code is fetched with cache: "reload" so a version bump always pulls fresh
+  // assets from the network, never a stale copy from the browser's HTTP cache.
+  // The multi-megabyte catalog index is the exception: the page has just
+  // downloaded it, so let the HTTP cache serve it here instead of paying for the
+  // same bytes twice on first launch. Its refresh path is stale-while-revalidate.
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => Promise.all(SHELL_ASSETS.map((url) =>
-        fetch(new Request(url, { cache: "reload" }))
+      .then((cache) => Promise.all(SHELL_ASSETS.map((url) => {
+        const heavy = url.endsWith("imported-catalog-index.json") || url.endsWith(".woff2");
+        return fetch(new Request(url, { cache: heavy ? "default" : "reload" }))
           .then((response) => (response && response.ok ? cache.put(url, response) : null))
-          .catch(() => null)
-      )))
+          .catch(() => null);
+      })))
       .then(() => self.skipWaiting())
   );
 });

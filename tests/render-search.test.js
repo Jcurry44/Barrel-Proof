@@ -472,3 +472,49 @@ test("market reality builder exposes secondary and shelf context", () => {
   assert.equal(Math.round(reality.ratios.shelfToSecondary * 100), 23);
   assert.equal(reality.ratios.shelfToMsrp, 1.25);
 });
+
+test("store search ranks the flagship spelling above longer variants and absurd prices", () => {
+  const ui = loadUi();
+  const bottles = [
+    { id: "rye", name: "Wild Turkey Rare Breed Rye Whiskey", producer: "Wild Turkey", category: "Rye", proof: 113, sourceRetailPrice: 65, catalogConfidence: "verified", sourceSummary: { sourceCount: 8, priceObservationCount: 8 }, sourcePreview: [{ sourceId: "x" }] },
+    { id: "typo", name: "Rare Breed Straight Bourbon", producer: "Wild Turkey", category: "Bourbon", proof: 101, sourceRetailPrice: 15000, catalogConfidence: "verified", sourceSummary: { sourceCount: 3, priceObservationCount: 3 }, sourcePreview: [{ sourceId: "x" }] },
+    { id: "bourbon", name: "Wild Turkey Rare Breed", producer: "Wild Turkey", category: "Bourbon", proof: 116.8, sourceRetailPrice: 47, catalogConfidence: "verified", sourceSummary: { sourceCount: 4, priceObservationCount: 4 }, sourcePreview: [{ sourceId: "x" }] }
+  ].map((bottle) => ({ ...bottle, _searchText: ui.buildBottleSearchText(bottle) }));
+  const ctx = {
+    bottles,
+    ui: { query: "rare breed", storeFilters: { type: "", release: "" }, storeHidePicks: true },
+    state: { activeBottleId: "bourbon", statuses: {} },
+    friends: []
+  };
+  const info = ui.getFilteredBottleInfo(ctx);
+  assert.deepEqual([...info.items.map((bottle) => bottle.id)], ["bourbon", "rye", "typo"]);
+});
+
+test("store search hides store picks by default, including hyphenated and abbreviated spellings", () => {
+  const ui = loadUi();
+  const bottles = [
+    { id: "core", name: "Buffalo Trace Kentucky Straight Bourbon", producer: "Buffalo Trace", category: "Bourbon", proof: 90 },
+    { id: "btb", name: "Buffalo Trace Buy-The-Barrel", producer: "Buffalo Trace", category: "Bourbon", proof: 90 },
+    { id: "priv", name: "Four Roses SB Bourbon Priv Selection OESF", producer: "Four Roses", category: "Bourbon", proof: 110 },
+    { id: "program", name: "Elijah Craig Barrel Program", producer: "Heaven Hill", category: "Bourbon", proof: 94 },
+    { id: "fwgs", name: "Weller Full Proof Single Barrel FWGS Exclusive", producer: "Buffalo Trace", category: "Bourbon", proof: 114 }
+  ].map((bottle) => ({ ...bottle, _searchText: ui.buildBottleSearchText(bottle) }));
+  const ctx = { bottles, ui: { query: "bourbon", storeFilters: { type: "", release: "" }, storeHidePicks: true }, state: { activeBottleId: "core", statuses: {} }, friends: [] };
+  const info = ui.getFilteredBottleInfo(ctx);
+  assert.deepEqual([...info.items.map((bottle) => bottle.id)], ["core"]);
+  assert.equal(info.hiddenPicks, 4);
+});
+
+test("store search matches every word of the query in any order", () => {
+  const ui = loadUi();
+  const bottles = [
+    { id: "pappy15", name: "Pappy Van Winkle Fam Res-15 YR", producer: "Sazerac", category: "Bourbon", proof: 107 },
+    { id: "pappy20", name: "Pappy Van Winkle Fam Res-20 YR", producer: "Sazerac", category: "Bourbon", proof: 90.4 },
+    { id: "orvw", name: "Old Rip Van Winkle 10 Year", producer: "Sazerac", category: "Bourbon", proof: 107 }
+  ].map((bottle) => ({ ...bottle, _searchText: ui.buildBottleSearchText(bottle) }));
+  const ctx = { bottles, ui: { query: "pappy 15", storeFilters: { type: "", release: "" }, storeHidePicks: true }, state: { activeBottleId: "orvw", statuses: {} }, friends: [] };
+  const info = ui.getFilteredBottleInfo(ctx);
+  assert.deepEqual([...info.items.map((bottle) => bottle.id)], ["pappy15"]);
+  ctx.ui.query = "winkle van";
+  assert.equal(ui.getFilteredBottleInfo(ctx).items.length, 3);
+});

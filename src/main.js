@@ -14,6 +14,7 @@
       const curatedData = window.BarrelCuratedData || { bottlesById: {}, bottleAliases: {} };
       const store = window.BarrelStore;
       const ui = window.BarrelUI;
+      const profileLogic = window.BarrelProfile;
 
       const imported = await loadImportedCatalog();
       const mergeOutcome = mergeBottles(data.bottles, imported.bottles || []);
@@ -53,13 +54,17 @@
         cocktails,
         reviewData,
         friends,
-        palate: data.palate,
+        // The seeded palate is a neutral base; the real palate is built from
+        // this device's profile so nobody inherits another drinker's taste.
+        basePalate: data.palate,
+        palate: profileLogic && profileLogic.buildPalate ? profileLogic.buildPalate(state.profile, data.palate) : data.palate,
         state,
         save: store.save,
         reset: () => store.reset(data.initialState, { bottleIds: bottles.map((bottle) => bottle.id), idAliases })
       });
 
       registerServiceWorker();
+      requestPersistentStorage();
     } catch (error) {
       console.error("Barrel Proof failed to start:", error);
       renderBootError(app, error);
@@ -71,9 +76,9 @@
       <section class="boot-panel">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
-          <p class="eyebrow">Private bourbon intelligence</p>
+          <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
           <h1>Barrel Proof</h1>
-          <p>Loading the source-backed bottle index...</p>
+          <p>Loading the bottle catalog&hellip;</p>
         </div>
       </section>
     `;
@@ -136,7 +141,7 @@
       <section class="boot-panel boot-error">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
-          <p class="eyebrow">Private bourbon intelligence</p>
+          <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
           <h1>Barrel Proof</h1>
           <p>Startup was interrupted. Your saved collection, tastings, and prices on this device are untouched.</p>
           <p class="boot-error-detail">${escapeBootText(message)}</p>
@@ -324,7 +329,30 @@
     existing.ageYears = Number.isFinite(existing.ageYears) ? existing.ageYears : incoming.ageYears;
     existing.upc = existing.upc || incoming.upc;
     if (!existing.story && incoming.story) existing.story = incoming.story;
-    if (!existing.sourceSummary && incoming.sourceSummary) existing.sourceSummary = incoming.sourceSummary;
+    existing.sourceSummary = mergeSourceSummary(existing.sourceSummary, incoming.sourceSummary);
+    // A seed bottle absorbing a catalog row inherits the row's evidence grade,
+    // so search ranks it as the verified record it now is.
+    existing.catalogConfidence = existing.catalogConfidence || incoming.catalogConfidence;
+  }
+
+  // Sum the evidence when a seed record absorbs several catalog rows: source
+  // and price counts add up, the price range widens, regions and source ids
+  // union. Without this a merged seed looked like it had one source.
+  function mergeSourceSummary(left, right) {
+    if (!left) return right ? cloneBottle(right) : left;
+    if (!right) return left;
+    const catalog = window.BarrelCatalog;
+    const uniq = (values) => (catalog && catalog.unique ? catalog.unique(values) : Array.from(new Set(values.filter(Boolean))));
+    const merged = { ...left };
+    merged.sourceCount = (Number(left.sourceCount) || 0) + (Number(right.sourceCount) || 0);
+    merged.priceObservationCount = (Number(left.priceObservationCount) || 0) + (Number(right.priceObservationCount) || 0);
+    const mins = [left.minRetailPrice, right.minRetailPrice].filter(Number.isFinite);
+    const maxes = [left.maxRetailPrice, right.maxRetailPrice].filter(Number.isFinite);
+    if (mins.length) merged.minRetailPrice = Math.min(...mins);
+    if (maxes.length) merged.maxRetailPrice = Math.max(...maxes);
+    merged.regions = uniq([...(left.regions || []), ...(right.regions || [])]);
+    merged.sourceIds = uniq([...(left.sourceIds || []), ...(right.sourceIds || [])]);
+    return merged;
   }
 
   function makeBottleKeys(bottle, catalog) {
@@ -401,6 +429,19 @@
       merged.push(item);
     }
     return merged;
+  }
+
+  // Ask the browser not to evict this origin's storage under pressure. Shelf,
+  // tastings, and prices live only in localStorage; a silent purge would wipe
+  // them. Best-effort: browsers may decline, and that's fine.
+  function requestPersistentStorage() {
+    try {
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+      }
+    } catch (error) {
+      // unsupported
+    }
   }
 
   function registerServiceWorker() {
