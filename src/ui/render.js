@@ -14,18 +14,18 @@
   // everything else sits behind "More". Desktop shows all of them in the top
   // tab bar. `dev` tabs only appear when data tools are switched on.
   const TABS = [
-    { id: "store", label: "Store Mode", short: "Store", icon: "tag", primary: true, blurb: "Search or scan a bottle, enter the price, get the call" },
-    { id: "foryou", label: "For You", short: "For You", icon: "spark", primary: true, blurb: "Picks tuned to your palate" },
+    { id: "store", label: "Bottles", short: "Bottles", icon: "tag", primary: true, blurb: "Search or scan any bottle: its facts, your history, the room's take" },
+    { id: "foryou", label: "For You", short: "For You", icon: "spark", blurb: "Picks tuned to your palate" },
     { id: "shelf", label: "Shelf", short: "Shelf", icon: "shelf", primary: true, blurb: "What you own, want, and finished" },
     { id: "tastings", label: "Tastings", short: "Tastings", icon: "glass", primary: true, blurb: "Log pours and see your ratings" },
     { id: "families", label: "Distilleries", short: "Houses", icon: "house", blurb: "Every house profiled by proof, style, and release" },
     { id: "showdown", label: "Showdown", short: "Showdown", icon: "versus", blurb: "Blind head-to-heads with Elo rankings" },
     { id: "cocktails", label: "Cocktails", short: "Cocktails", icon: "cocktail", blurb: "Bar-grade specs matched to your bottle" },
-    { id: "night", label: "Night", short: "Night", icon: "moon", blurb: "Run a blind flight for the room" },
+    { id: "night", label: "Night", short: "Night", icon: "moon", primary: true, blurb: "Run a blind flight for the room" },
     { id: "club", label: "Club", short: "Club", icon: "people", blurb: "Trade cards with friends, see the group signal" },
     { id: "qa", label: "Data tools", short: "Data", icon: "wrench", dev: true, blurb: "Catalog quality queues for maintainers" }
   ];
-  const DESKTOP_TAB_ORDER = ["foryou", "store", "families", "showdown", "shelf", "cocktails", "tastings", "night", "club", "qa"];
+  const DESKTOP_TAB_ORDER = ["store", "shelf", "tastings", "night", "showdown", "foryou", "cocktails", "families", "club", "qa"];
   // The flavor wheel, grouped the way tasters think. Custom write-ins join the
   // same tag set and render under "Yours".
   const TAG_GROUPS = [
@@ -114,6 +114,7 @@
         profileMode: "edit",
         profileDraft: null,
         devMode: readDevMode(),
+        priceCheck: readPriceCheck(),
         pendingClubCard: null,
         clubLinkText: "",
         shareBusy: false
@@ -166,6 +167,33 @@
     } catch (error) {
       // private mode: the toggle just won't stick
     }
+  }
+
+  // Price check — the Buy / Consider / Pass engine — ships as a beta behind a
+  // toggle. Its anchors are state list prices, which run below open-market
+  // shelves, so it stays off for friends until their own sightings can anchor
+  // it. Off: bottle cards show facts, list prices, your pours, and the room.
+  function readPriceCheck() {
+    try {
+      if (global.location && /[?&]pricecheck=1\b/.test(global.location.search || "")) return true;
+      return Boolean(global.localStorage && global.localStorage.getItem("barrel-proof-price-check") === "1");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function writePriceCheck(on) {
+    try {
+      if (!global.localStorage) return;
+      if (on) global.localStorage.setItem("barrel-proof-price-check", "1");
+      else global.localStorage.removeItem("barrel-proof-price-check");
+    } catch (error) {
+      // private mode
+    }
+  }
+
+  function priceCheckEnabled(ctx) {
+    return Boolean(ctx && ctx.ui && ctx.ui.priceCheck);
   }
 
   function openProfileSheet(ctx, mode) {
@@ -570,6 +598,14 @@
         writeDevMode(ctx.ui.devMode);
         if (!ctx.ui.devMode && ctx.ui.tab === "qa") ctx.ui.tab = "store";
         render(ctx);
+        return;
+      }
+
+      if (target.dataset.action === "toggle-price-check") {
+        ctx.ui.priceCheck = !ctx.ui.priceCheck;
+        writePriceCheck(ctx.ui.priceCheck);
+        render(ctx);
+        showToast(ctx, ctx.ui.priceCheck ? "Price check on — Buy / Consider / Pass shows on bottle cards." : "Price check off.");
         return;
       }
 
@@ -1590,6 +1626,7 @@
       <div class="sheet-section">
         <p class="eyebrow">App</p>
         ${sheetRow({ icon: "info", title: "About & data sources", detail: `${count.toLocaleString("en-US")} bottles from ${Number(meta.sourceCount) || 0} official catalogs`, attrs: 'data-action="open-sheet" data-sheet="about"' })}
+        ${sheetRow({ icon: "tag", title: "Price check · beta", detail: "Buy / Consider / Pass on bottle cards. Anchored to state list prices, so treat it as an experiment.", attrs: 'data-action="toggle-price-check" aria-pressed="' + (ctx.ui.priceCheck ? "true" : "false") + '"', end: `<span class="sheet-toggle${ctx.ui.priceCheck ? " on" : ""}" aria-hidden="true"></span>` })}
         ${sheetRow({ icon: "wrench", title: "Data tools", detail: "Catalog quality queues for maintainers", attrs: 'data-action="toggle-dev" aria-pressed="' + (ctx.ui.devMode ? "true" : "false") + '"', end: `<span class="sheet-toggle${ctx.ui.devMode ? " on" : ""}" aria-hidden="true"></span>` })}
         ${sheetRow({ icon: "rotate", title: "Reset everything", detail: "Erases this device's data after a confirmation", attrs: 'data-action="reset"', danger: true })}
       </div>
@@ -1606,7 +1643,7 @@
       ${sheetHead(
         welcome ? "Welcome" : "Your profile",
         welcome ? "Make Barrel Proof yours" : "Name & palate",
-        welcome ? "Three quick taps. Your name goes on your flights and club card; your taste shapes every Buy / Consider / Pass call." : "",
+        welcome ? "Three quick taps. Your name goes on your flights and club card; your taste tunes For You and every bottle card." : "",
         welcome ? "Skip for now" : "Close"
       )}
       <label class="field">
@@ -1650,7 +1687,7 @@
         <div><span>Catalog date</span><strong>${escapeHtml(generatedText)}</strong></div>
       </div>
       <p class="about-copy">Bottle identities and list prices come from state liquor authorities and federal label registries — control-state price books, TTB COLA, LCBO, and more.${full > imported ? ` Of ${full.toLocaleString("en-US")} raw records, only the ${imported.toLocaleString("en-US")} with a known maker and a confirmed price or cross-source identity are shown.` : ""} List prices are not your local shelf: log what you see and the app anchors on that instead.</p>
-      <p class="about-copy">Buy / Consider / Pass weighs the price against the best reference, your palate, your club's ratings, and cited reviews. It is a second opinion, not gospel — the bottle in your hand always wins.</p>
+      <p class="about-copy">Price check, the Buy / Consider / Pass engine, is in beta behind More. It is anchored to state list prices, which run below open-market shelves, so it stays off until your own price sightings can anchor it.</p>
       <div class="sheet-actions">
         <button class="ghost-button" type="button" data-action="share-app">Share the app</button>
       </div>
@@ -1667,7 +1704,7 @@
     return `
       ${sheetHead("Club invite", card.name + "'s card", existing
         ? "You already have " + card.name + " in your club — this replaces their card with the newer one."
-        : "Add " + card.name + " to your club and their ratings join your group's Buy / Consider / Pass calls.")}
+        : "Add " + card.name + " to your club and their ratings show on every bottle card as the room's take.")}
       <div class="about-stats">
         <div><span>Ratings</span><strong>${ratings}</strong></div>
         <div><span>Owned</span><strong>${(card.owned || []).length}</strong></div>
@@ -1871,7 +1908,7 @@
             <span></span><span></span><span></span>
           </div>
           <div>
-            <p class="eyebrow">Private bourbon intelligence</p>
+            <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
             <h1>Barrel Proof</h1>
           </div>
         </div>
@@ -1946,6 +1983,149 @@
   // anywhere (Store results, Shelf). Essentials up top; the deep research lives in
   // a "Full details" expander so the answer is glanceable, no endless scroll.
   function renderScorecard(ctx) {
+    return priceCheckEnabled(ctx) ? renderVerdictScorecard(ctx) : renderBottleCard(ctx);
+  }
+
+  // The bottle card friends see: what it is, what it lists for, your pours, the
+  // room's rating, your shelf status — and a place to log the price you saw.
+  // No verdict: that engine is Price check, a beta behind More.
+  function renderBottleCard(ctx) {
+    if (!ctx.ui.scorecardOpen) return "";
+    const bottle = getActiveBottle(ctx);
+    if (!bottle) return "";
+    const isShelf = ctx.ui.scorecardContext === "shelf";
+    const canonId = resolveIdentity(ctx, bottle.id);
+    const pours = (ctx.state.tastings || []).filter((tasting) => resolveIdentity(ctx, tasting.bottleId) === canonId);
+    const poursAvg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+    const batchAverages = {};
+    for (const pour of pours) {
+      if (!pour.batch || !Number.isFinite(Number(pour.score))) continue;
+      (batchAverages[pour.batch] = batchAverages[pour.batch] || []).push(Number(pour.score));
+    }
+    const batchRows = Object.entries(batchAverages)
+      .map(([label, scores]) => ({ label, avg: average(scores), count: scores.length }))
+      .sort((a, b) => b.avg - a.avg);
+    const friendAvg = rec.getFriendAverage(bottle.id, ctx.friends);
+    const listing = listPriceSummary(bottle);
+
+    return `
+      <div class="scorecard-backdrop">
+        <section class="scorecard-card bottle-card-mode" role="dialog" aria-modal="true" aria-label="${escapeAttr(bottle.name)}">
+          <button class="scorecard-close" type="button" data-action="close-card" aria-label="Close">&times;</button>
+          <p class="eyebrow card-eyebrow">${isShelf ? "Your bottle" : "Bottle"}</p>
+          ${renderBottleHero(ctx, bottle)}
+          <div class="decision-metrics">
+            ${metric(listing.label, listing.value)}
+            ${metric("MSRP", rec.money(bottle.msrp))}
+            ${metric("Your avg", poursAvg ? poursAvg.toFixed(1) : "--")}
+            ${metric("Club", friendAvg ? friendAvg.toFixed(1) : "--")}
+          </div>
+          ${listing.note ? `<p class="source-line">${escapeHtml(listing.note)}</p>` : ""}
+          ${renderScorecardReviews(ctx, bottle)}
+          ${ctx.ui.lastScanCode ? `<button class="ghost-button scan-link-btn" type="button" data-action="link-scan" data-bottle="${escapeAttr(bottle.id)}">Link scanned code ${escapeHtml(ctx.ui.lastScanCode)} to this bottle</button>` : ""}
+          ${pours.length ? `<section class="scorecard-pours"><h3>Your pours</h3><p>${pours.length} logged${poursAvg ? " · avg " + poursAvg.toFixed(1) : ""}</p>${pours.slice(0, 3).map((pour) => `<div class="pour-row"><span>${escapeHtml(pour.date || "")}${pour.batch ? ' <span class="batch-tag">' + escapeHtml(pour.batch) + "</span>" : ""}${ratingsLogic && ratingsLogic.isBlindTasting(pour) ? ' <span class="blind-chip">Blind</span>' : ""}</span><b>${Number(pour.score).toFixed(1)}</b></div>`).join("")}${batchRows.length ? `<div class="batch-breakdown">${batchRows.map((row) => `<span class="batch-tag">${escapeHtml(row.label)} · ${row.avg.toFixed(1)}${row.count > 1 ? " (" + row.count + ")" : ""}</span>`).join("")}</div>` : ""}</section>` : ""}
+          ${renderScorecardShelfRow(ctx, bottle)}
+          <div class="status-actions">
+            ${statusButton(ctx, "owned", "Add to shelf")}
+            ${statusButton(ctx, "wishlist", "Wishlist")}
+            ${statusButton(ctx, "passed", "Pass log")}
+            <button class="ghost-button" type="button" data-action="log-active">Log tasting</button>
+          </div>
+          ${renderPriceSightings(ctx, bottle)}
+          <details class="scorecard-more">
+            <summary>More about this bottle</summary>
+            <div class="scorecard-group">
+              <h4>Reviews &amp; pairing</h4>
+              ${renderReviewIntelligence(ctx, bottle)}
+              ${renderCocktailLane(ctx, bottle)}
+            </div>
+            <details class="scorecard-data">
+              <summary>Data quality &amp; sources</summary>
+              ${renderBottleIntelligence(ctx, bottle, null)}
+              ${renderBottleDossier(ctx, bottle, null)}
+              ${renderIdentityPanel(ctx, bottle)}
+              ${renderBottleScout(ctx, bottle)}
+            </details>
+          </details>
+        </section>
+      </div>
+    `;
+  }
+
+  // What the state catalogs list a bottle at, said plainly. Never a verdict.
+  function listPriceSummary(bottle) {
+    const info = rec.getSourceRetailPriceInfo
+      ? rec.getSourceRetailPriceInfo(bottle)
+      : { value: rec.getSourceRetailPrice(bottle), observations: 0 };
+    const summary = bottle.sourceSummary || {};
+    if (Number.isFinite(info.value)) {
+      const count = Number(summary.priceObservationCount) || info.observations || 0;
+      const min = Number(summary.minRetailPrice);
+      const max = Number(summary.maxRetailPrice);
+      const range = Number.isFinite(min) && Number.isFinite(max) && max > min ? rec.money(min) + " to " + rec.money(max) : "";
+      const note = count > 1
+        ? "State catalogs list it " + (range ? "from " + range : "at " + rec.money(info.value)) + " across " + count + " prices. Your shelf may differ — log what you see."
+        : "One state catalog lists it at this price. Your shelf may differ — log what you see.";
+      return { label: "List price", value: rec.money(info.value), note };
+    }
+    if (Number.isFinite(Number(bottle.msrp))) {
+      return { label: "List price", value: "--", note: "No state catalog price on file; MSRP shown." };
+    }
+    return { label: "List price", value: "--", note: "" };
+  }
+
+  // The one price a friend should see on a row: what they logged, else the
+  // state list price, else MSRP.
+  function displayPrice(bottle) {
+    if (Number.isFinite(bottle.observedPrice)) return { value: bottle.observedPrice, label: "you saw" };
+    const info = rec.getSourceRetailPriceInfo ? rec.getSourceRetailPriceInfo(bottle) : { value: rec.getSourceRetailPrice(bottle) };
+    if (Number.isFinite(info.value)) return { value: info.value, label: "list" };
+    if (Number.isFinite(Number(bottle.msrp))) return { value: Number(bottle.msrp), label: "MSRP" };
+    return null;
+  }
+
+  function bottleFactLine(bottle) {
+    const parts = [getBottleMaker(bottle)];
+    const proofText = bottle.proofDisplay || (Number.isFinite(bottle.proof) ? bottle.proof + " proof" : "");
+    if (proofText) parts.push(proofText);
+    if (bottle.age && !/^(unknown|nas|n\/a|batch dependent)$/i.test(String(bottle.age))) parts.push(bottle.age);
+    const attrs = bottleAttrs(bottle);
+    if (attrs.style && attrs.style !== "Traditional bourbon") parts.push(attrs.style);
+    return parts.filter(Boolean).join(" · ");
+  }
+
+  // Price sightings: the local price map the group builds one shelf at a time.
+  function renderPriceSightings(ctx, bottle) {
+    const P = global.BarrelPrices;
+    if (!P) return "";
+    const obs = P.list(ctx.state, bottle.id);
+    const stats = P.stats(ctx.state, bottle.id);
+    const entered = Number(ctx.state.storePrice);
+    const canLog = Number.isFinite(entered) && entered > 0;
+    return `
+      <section class="price-log">
+        <div class="price-log-head">
+          <div>
+            <p class="eyebrow">Prices you've seen</p>
+            ${stats
+              ? `<strong>${stats.count === 1 || stats.min === stats.max ? rec.money(stats.median) : "median " + rec.money(stats.median) + " &middot; " + rec.money(stats.min) + "&ndash;" + rec.money(stats.max)}</strong><small>${stats.count} sighting${stats.count === 1 ? "" : "s"} &middot; your local reference</small>`
+              : `<strong>No sightings yet</strong><small>Log the shelf price when you see one &mdash; your stores beat any state list.</small>`}
+          </div>
+        </div>
+        <div class="price-sighting-row">
+          <label class="field price-field">
+            <span>Price you see</span>
+            <input id="storePrice" type="number" min="0" step="1" value="${canLog ? entered : ""}" inputmode="decimal" placeholder="e.g. 42">
+          </label>
+          <button class="primary-button price-log-btn" type="button" data-action="log-price"${canLog ? "" : " disabled"}>${canLog ? "Log " + rec.money(entered) : "Log it"}</button>
+        </div>
+        ${obs.length ? `<div class="price-log-list">${obs.slice(0, 6).map((o, i) => `<span class="price-pill">${rec.money(o.price)}${o.store ? " &middot; " + escapeHtml(o.store) : ""}<button class="price-x" type="button" data-action="remove-price" data-idx="${i}" aria-label="Remove sighting">&times;</button></span>`).join("")}</div>` : ""}
+      </section>
+    `;
+  }
+
+  // The verdict scorecard: Price check mode only.
+  function renderVerdictScorecard(ctx) {
     if (!ctx.ui.scorecardOpen) return "";
     const bottle = getActiveBottle(ctx);
     if (!bottle) return "";
@@ -2152,12 +2332,14 @@
         <section class="search-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Store Mode</p>
-              <h2>Buy window</h2>
+              <p class="eyebrow">Bottles</p>
+              <h2>${priceCheckEnabled(ctx) ? "Buy window" : "Look up a bottle"}</h2>
             </div>
             <button class="scan-button" type="button" data-action="scan-open" title="Scan a bottle's barcode">Scan</button>
           </div>
-          <p class="source-note">Search ${importedCount.toLocaleString("en-US")} bottles or scan the barcode. Tap a bottle, enter the shelf price, and get the call: Buy, Consider, or Pass.</p>
+          <p class="source-note">${priceCheckEnabled(ctx)
+            ? `Search ${importedCount.toLocaleString("en-US")} bottles or scan the barcode. Tap a bottle, enter the shelf price, and get the call: Buy, Consider, or Pass.`
+            : `Search ${importedCount.toLocaleString("en-US")} bottles or scan the barcode. Tap one for its card: what it is, what it lists for, your pours, and what the room thinks.`}</p>
           ${ctx.ui.lastScanCode ? `<p class="scan-pending">Unmatched barcode <b>${escapeHtml(ctx.ui.lastScanCode)}</b> — open the right bottle's scorecard and tap “Link scanned code”, or <button class="link-inline" type="button" data-action="scan-dismiss">dismiss</button>.</p>` : ""}
           <label class="field">
             <span>Bottle</span>
@@ -2848,16 +3030,21 @@
   // listings collapsed into this row. Never "New" or "no club score".
   function renderMiniChips(ctx, bottle, status, friendAvg) {
     const chips = [];
-    const priceInfo = rec.getReferencePriceInfo
-      ? rec.getReferencePriceInfo(bottle)
-      : { value: rec.getReferencePrice(bottle), type: "none" };
-    if (Number.isFinite(priceInfo.value) && priceInfo.type !== "none") {
-      const label = priceInfo.type === "observed" ? "you saw"
-        : priceInfo.type === "msrp" || priceInfo.type === "msrp-allocated" ? "MSRP"
-          : priceInfo.type === "secondary" ? "secondary"
-            : priceInfo.type === "fair" ? "fair"
-              : "typical";
-      chips.push(`<span class="chip-price">${rec.money(priceInfo.value)} ${escapeHtml(label)}</span>`);
+    if (priceCheckEnabled(ctx)) {
+      const priceInfo = rec.getReferencePriceInfo
+        ? rec.getReferencePriceInfo(bottle)
+        : { value: rec.getReferencePrice(bottle), type: "none" };
+      if (Number.isFinite(priceInfo.value) && priceInfo.type !== "none") {
+        const label = priceInfo.type === "observed" ? "you saw"
+          : priceInfo.type === "msrp" || priceInfo.type === "msrp-allocated" ? "MSRP"
+            : priceInfo.type === "secondary" ? "secondary"
+              : priceInfo.type === "fair" ? "fair"
+                : "typical";
+        chips.push(`<span class="chip-price">${rec.money(priceInfo.value)} ${escapeHtml(label)}</span>`);
+      }
+    } else {
+      const shown = displayPrice(bottle);
+      if (shown) chips.push(`<span class="chip-price">${rec.money(shown.value)} ${escapeHtml(shown.label)}</span>`);
     }
     const P = global.BarrelPalate;
     const avail = P && P.availability ? P.availability(bottle) : null;
@@ -2889,7 +3076,7 @@
                 <h2>Classic bourbon cocktails</h2>
               </div>
             </div>
-            <p class="source-note">Specs are curated house standards for premium service. Bottle fit is matched against the active bottle in Store Mode.</p>
+            <p class="source-note">Specs are curated house standards for premium service. Bottle fit is matched against the active bottle in Bottles.</p>
           </section>
           <div class="cocktail-card-grid">
             ${ranked.map((item) => renderCocktailCard(ctx, item)).join("")}
@@ -3513,12 +3700,12 @@
               <h2>For you</h2>
             </div>
           </div>
-          <p class="source-note">Connoisseur-grade picks tuned to your taste. The <strong>Buy this</strong> lane is bottles you can actually find at a fair price &mdash; never allocated unicorns dressed up as shelf buys. The more you log in Tastings and Showdown, the sharper it gets.</p>
+          <p class="source-note">Picks tuned to your taste. The <strong>Findable</strong> lane is bottles you can actually walk out with &mdash; never allocated unicorns dressed up as shelf finds. The more you log in Tastings and Showdown, the sharper it gets.</p>
           ${renderPalateSummary(ctx, data.profile)}
         </div>
         ${renderGetStarted(ctx)}
         ${renderPourTonight(ctx, data.profile)}
-        ${renderRecLane(ctx, "Buy this", "Findable picks for your palate, at prices you'll actually pay.", data.recs.buyNow, "buy")}
+        ${renderRecLane(ctx, priceCheckEnabled(ctx) ? "Buy this" : "Findable for you", priceCheckEnabled(ctx) ? "Findable picks for your palate, at prices you'll actually pay." : "On shelves and a fit for your palate, with the list price to expect.", data.recs.buyNow, "buy")}
         ${data.recs.grails.length ? renderRecLane(ctx, "Grails to chase", "Your taste would love these, but they're allocated. Chase them honestly — they're not shelf buys.", data.recs.grails, "grail") : ""}
         ${!data.recs.buyNow.length && !data.recs.grails.length ? emptyState("Rate a few bottles in Tastings or run a Showdown round, and your recommendations appear here.") : ""}
       </section>
@@ -4012,7 +4199,7 @@
           </span>
         </div>
         <div class="insight-grid">
-          ${insight("Shelf value", ownedValues.length ? rec.money(ownedValue) : "n/a", unknownOwnedValue ? unknownOwnedValue + " owned without value" : "fair value estimate")}
+          ${insight("Shelf value", ownedValues.length ? rec.money(ownedValue) : "n/a", unknownOwnedValue ? unknownOwnedValue + " owned without a price" : "at list prices")}
           ${insight("Still to taste", stillToTaste, ownedBottles.length ? "owned, no pour logged" : "nothing owned yet")}
           ${insight("Open targets", countStatus(ctx, "wishlist"), "wishlist bottles")}
           ${insight("Tastings", ctx.state.tastings.length, "logged pours")}
@@ -4116,11 +4303,36 @@
   }
 
   function renderShelfCard(ctx, bottle) {
-    const result = decide(ctx, bottle, bottle.shelfAverage || bottle.observedPrice || rec.getReferencePrice(bottle));
     const C = global.BarrelCollection;
     const entry = C ? C.entry(ctx.state, bottle.id) : null;
     const count = entry ? entry.count : 0;
     const batches = entry && entry.batches ? entry.batches : [];
+    if (!priceCheckEnabled(ctx)) {
+      const canonId = resolveIdentity(ctx, bottle.id);
+      const pours = (ctx.state.tastings || []).filter((tasting) => resolveIdentity(ctx, tasting.bottleId) === canonId && Number.isFinite(Number(tasting.score)));
+      const avg = pours.length ? average(pours.map((pour) => Number(pour.score))) : null;
+      const story = bottle.story && !/^Source-backed catalog record/i.test(bottle.story) && !/source-backed catalog record from/i.test(bottle.story) ? bottle.story : bottleFactLine(bottle);
+      return `
+        <article class="shelf-card shelf-card-tap" data-tone="${escapeAttr(bottle.imageTone)}" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf" role="button" tabindex="0" aria-label="Open ${escapeAttr(bottle.name)}">
+          <div class="shelf-card-top">
+            ${bottleVisual(bottle)}
+            ${statusLabel(ctx.state.statuses[bottle.id]) ? `<span class="status-pill">${escapeHtml(statusLabel(ctx.state.statuses[bottle.id]))}</span>` : ""}
+            ${count > 1 ? `<span class="count-badge">&times;${count}</span>` : ""}
+          </div>
+          <h3>${escapeHtml(bottle.name)}</h3>
+          <p>${escapeHtml(story)}</p>
+          ${batches.length ? `<div class="shelf-batches">${batches.slice(0, 8).map((bt) => `<span>${escapeHtml(bt)}</span>`).join("")}</div>` : ""}
+          <div class="card-meter" aria-hidden="true">
+            <span style="width:${avg ? Math.round(avg * 10) : 0}%"></span>
+          </div>
+          <div class="card-footer">
+            <strong>${avg ? avg.toFixed(1) : "Not rated"}</strong>
+            <small>${pours.length ? pours.length + " pour" + (pours.length === 1 ? "" : "s") : "log a pour"}</small>
+          </div>
+        </article>
+      `;
+    }
+    const result = decide(ctx, bottle, bottle.shelfAverage || bottle.observedPrice || rec.getReferencePrice(bottle));
     return `
       <article class="shelf-card shelf-card-tap" data-tone="${escapeAttr(bottle.imageTone)}" data-open-card="${escapeAttr(bottle.id)}" data-card-context="shelf" role="button" tabindex="0" aria-label="Open ${escapeAttr(bottle.name)} scorecard">
         <div class="shelf-card-top">
@@ -4727,7 +4939,7 @@
               <h2>${hasFriends ? ctx.friends.length + " in the room" : "Bring your group in"}</h2>
             </div>
           </div>
-          <p class="source-note">Send your card as a link. Friends tap it and their app adds you — no accounts, no servers. Everyone's ratings stay on their own phone and merge into the group's Buy / Consider / Pass calls.</p>
+          <p class="source-note">Send your card as a link. Friends tap it and their app adds you — no accounts, no servers. Everyone's ratings stay on their own phone and show up on every bottle card as the room's take.</p>
           <div class="club-actions">
             <button class="primary-button" type="button" data-action="club-share-link"${ctx.ui.shareBusy ? " disabled" : ""}>${ctx.ui.shareBusy ? "Preparing link…" : "Share my card"}</button>
             <button class="ghost-button" type="button" data-action="club-add">Add a friend's card file</button>
@@ -4744,7 +4956,7 @@
         </section>
         ${hasFriends ? `<div class="friend-grid">${ctx.friends.map((friend) => renderFriend(ctx, friend)).join("")}</div>` : renderClubHowItWorks()}
         ${renderClubConsensus(ctx)}
-        ${hasFriends ? renderClubBestBuys(ctx) : ""}
+        ${hasFriends && priceCheckEnabled(ctx) ? renderClubBestBuys(ctx) : ""}
       </section>
     `;
   }
@@ -4754,7 +4966,7 @@
       <div class="empty-hero">
         <p class="eyebrow">How the club works</p>
         <h3>Your friends' palates, in your pocket</h3>
-        <p>Once a few cards are in, every scorecard shows what the room thinks, and the group's ratings pull the Buy / Consider / Pass call toward bottles your crew actually loved.</p>
+        <p>Once a few cards are in, every bottle card shows what the room thinks, and the bottles your crew actually loved rise to the top of Club.</p>
         <div class="empty-hero-steps">
           <div><b>1</b><span>Tap <strong>Share my card</strong> and send the link to your group chat.</span></div>
           <div><b>2</b><span>Friends open the link on their phone and tap <strong>Add to my club</strong>.</span></div>

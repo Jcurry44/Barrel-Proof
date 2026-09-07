@@ -1,11 +1,14 @@
 # Barrel Proof
 
-A private bourbon decision companion for the bottle in front of you, the shelf
-you are building, and the friends you trust. Open it in a store, type the shelf
-price, and get a straight **Buy / Consider / Pass** with reasons.
+A private bourbon companion for the shelf you are building, the pours you
+log, and the friends you drink with. Look up any bottle, keep your shelf
+without typing, score pours blind or sighted, run blind flights for the room,
+and settle head-to-heads with Showdown.
 
 No accounts, no servers, no tracking. Everything you log stays on your phone.
 It installs to the home screen like a native app and works offline.
+
+Live at **https://jcurry44.github.io/Barrel-Proof/**
 
 ## Run it
 
@@ -20,16 +23,12 @@ or `npx serve .` — or on Windows, double-click `start-barrel-proof.bat`.
 Opening `index.html` straight from the file system also works (the catalog
 loads from a JS fallback), but the service worker and offline cache need HTTP.
 
-## Put it on the web (GitHub Pages)
+## Deploying
 
-The repo is already laid out as a static site with a `.nojekyll` marker.
-
-1. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch**,
-   branch `main`, folder `/ (root)`. Save.
-2. In a minute the app is live at `https://<your-user>.github.io/Barrel-Proof/`.
-3. Every push to `main` redeploys. The service worker fetches app code
-   network-first, so friends get updates on their next launch without
-   reinstalling; the multi-megabyte catalog refreshes in the background.
+GitHub Pages serves the `main` branch from the repository root, and every
+push to `main` redeploys within a minute. The service worker fetches app code
+network-first, so friends get updates on their next launch without
+reinstalling; the multi-megabyte catalog refreshes in the background.
 
 ## Share it with your group
 
@@ -48,15 +47,13 @@ exports everything; **Restore from a backup** brings it onto a new phone.
 
 ## What it does
 
-- **Store Mode** — search 8,500+ bottles or scan the barcode, tap the bottle,
-  enter the shelf price, and get the call. Results collapse the catalog's many
-  spellings of one product into a single row; state list prices are pooled into
-  a typical shelf price; allocated bottles are judged by allocation economics
-  (near retail is a win, not a "hype tax").
+- **Bottles** — search 8,500+ bottles or scan the barcode. Each bottle card
+  shows what it is, what state catalogs list it for, your pours, the room's
+  rating, and your shelf status, and lets you log the price you saw. Results
+  collapse the catalog's many spellings of one product into a single row.
 - **For You** — a recommender seeded by your profile and sharpened by every
-  pour, Showdown, and shelf status you log. Two hard rules: it never puts an
-  unbuyable bottle in the *Buy this* lane, and it never quotes a price you
-  won't actually pay.
+  pour, Showdown, and shelf status you log. It never puts an unbuyable bottle
+  in the findable lane.
 - **Shelf** — a tap-don't-type collection builder (pick your distilleries, tap
   what you own; batched lines like ECBP and Booker's expand into real
   batches), quick add for ripping through a cabinet, and value by house.
@@ -131,6 +128,16 @@ redundant aliases and per-record previews) and rewrites the JS fallback.
 Prices in the catalog are official list prices, not your local shelf. Log the
 prices you see on a bottle's scorecard and the app anchors on those first.
 
+## Price check (beta)
+
+The Buy / Consider / Pass engine (`src/logic/recommendation.js`) is complete
+and tested but ships switched off: More → *Price check · beta* turns it on
+for one device (`?pricecheck=1` for one visit). Its price anchors are state
+list prices from control states, which run below open-market shelves such as
+New York's, so a fair local price can read as "Pass" until the group's own
+sightings anchor it. Keep logging the prices you see; that data is what makes
+it trustworthy.
+
 ## Maintainer tools
 
 More → *Data tools* switches on the catalog quality queues (identity, proof,
@@ -139,8 +146,5 @@ so friends never see them. `?dev=1` in the URL does the same for one visit.
 
 ## Accuracy
 
-Buy / Consider / Pass weighs the shelf price against the best reference (your
-own sightings, then curated fair value, secondary market, MSRP, then pooled
-state list prices), your palate, your club's ratings, and cited reviews. It is
-a second opinion, not gospel. Bottle facts come from the sources above and
-from curated records; corrections welcome.
+Bottle facts and list prices come from the sources above and from curated
+records; list prices are not your local shelf. Corrections welcome.

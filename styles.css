@@ -5436,3 +5436,24 @@ button.wiz-line:hover {
     letter-spacing: 0.18em;
   }
 }
+
+/* ---------- Bottle card (companion mode) ---------- */
+.bottle-card-mode .card-eyebrow {
+  margin: 4px 0 10px;
+}
+
+.bottle-card-mode .decision-metrics {
+  margin-top: 2px;
+}
+
+.price-sighting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.price-sighting-row .price-log-btn {
+  min-height: 44px;
+}

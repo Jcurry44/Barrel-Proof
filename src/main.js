@@ -76,9 +76,9 @@
       <section class="boot-panel">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
-          <p class="eyebrow">Private bourbon intelligence</p>
+          <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
           <h1>Barrel Proof</h1>
-          <p>Loading the source-backed bottle index...</p>
+          <p>Loading the bottle catalog&hellip;</p>
         </div>
       </section>
     `;
@@ -141,7 +141,7 @@
       <section class="boot-panel boot-error">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
-          <p class="eyebrow">Private bourbon intelligence</p>
+          <p class="eyebrow">Shelf &middot; Palate &middot; Crew</p>
           <h1>Barrel Proof</h1>
           <p>Startup was interrupted. Your saved collection, tastings, and prices on this device are untouched.</p>
           <p class="boot-error-detail">${escapeBootText(message)}</p>
