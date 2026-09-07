@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests
+        run: node --test tests/*.test.js
+      - name: Catalog index and JS fallback stay in sync
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const json = fs.readFileSync("src/data/imported-catalog-index.json", "utf8").trim();
+            const js = fs.readFileSync("src/data/imported-catalog-index.js", "utf8");
+            if (!js.includes(json)) { console.error("imported-catalog-index.js does not embed imported-catalog-index.json — run node tools/slim-catalog-index.js"); process.exit(1); }
+            console.log("catalog fallback in sync");
+          '

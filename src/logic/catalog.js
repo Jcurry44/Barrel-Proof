@@ -559,6 +559,7 @@
       record.bottleKind,
       record.size,
       record.proof,
+      record.upc,
       ...(record.aliases || [])
     ].filter(Boolean).join(" ").toLowerCase();
   }

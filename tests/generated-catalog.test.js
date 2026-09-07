@@ -30,7 +30,20 @@ test("generated catalog dedupes 1792 Sweet Wheat into one source-backed app bott
   assert.equal(matches[0].category, "Wheated Bourbon");
   assert.ok(matches[0].sourceSummary.sourceCount >= 10);
   assert.ok(matches[0].sourceSummary.priceObservationCount >= 10);
-  assert.ok(matches[0].sourcePreview.length <= 4);
+  assert.ok(matches[0].sourceSummary.sourceIds.length >= 1);
+  assert.equal(matches[0].sourcePreview, undefined, "per-record previews are not shipped in the index");
+});
+
+test("generated catalog index ships no aliases that merely repeat the name or a barcode", () => {
+  const index = loadIndex();
+  for (const bottle of index.bottles) {
+    const name = String(bottle.name || "").trim().toLowerCase();
+    const codes = new Set([bottle.upc, ...(bottle.barcodes || [])].filter(Boolean).map(String));
+    for (const alias of bottle.aliases || []) {
+      assert.notEqual(String(alias).toLowerCase(), name, bottle.id + " repeats its own name as an alias");
+      assert.ok(!codes.has(String(alias)), bottle.id + " repeats a barcode as an alias");
+    }
+  }
 });
 
 test("generated catalog index excludes low-confidence barrel-reference false positives", () => {

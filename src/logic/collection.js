@@ -630,6 +630,74 @@
     return n || String((bottle && bottle.id) || "");
   }
 
+  // Product-level identity for SEARCH and quick-add surfaces: one card per real
+  // expression. lineKey() above is deliberately coarser — the collection wizard
+  // wants one card per batch LINE (every Weller expression under one "Weller"
+  // card with expression chips). Store Mode must never inherit that: a buyer
+  // typing "weller" needs Antique 107, Full Proof, 12 Year, and Special
+  // Reserve as separate, findable results. Sizes, release years, batch codes,
+  // store-pick markers, and catalog shorthand are stripped; the words that
+  // name an expression (age, proof number, "single barrel", "small batch",
+  // "barrel proof", finishes) are kept.
+  const PRODUCT_STOP_TOKENS = new Set([
+    "kentucky", "ky", "tennessee", "tn", "straight", "str", "bourbon", "brbn", "bbn", "brn",
+    "whiskey", "whisky", "whsky", "wsky", "ksbw", "spirit", "spirits", "sour", "mash", "the", "of",
+    "prohibition", "style", "row", "series", "wheated", "dom", "domestic",
+    "select", "selection", "slct", "sel", "store", "private", "priv", "pick", "picked", "hand",
+    "handpicked", "btb", "psb", "sbs", "exclusive", "fwgs", "program", "edition", "hal", "aged"
+  ]);
+  const PRODUCT_TOKEN_MAP = {
+    sngl: "single", sgl: "single", brrl: "barrel", brl: "barrel", bbl: "barrel", sb: "single barrel",
+    sm: "small", btch: "batch", ltd: "limited", yr: "year", yrs: "year", years: "year",
+    rsv: "reserve", rsrv: "reserve", res: "reserve",
+    eight: "8", ten: "10", twelve: "12", fifteen: "15", eighteen: "18", twenty: "20",
+    blantons: "blanton", makers: "maker", michters: "michter", bookers: "booker", bakers: "baker",
+    parkers: "parker", russells: "russell", daniels: "daniel", angels: "angel", shenks: "shenk"
+  };
+  // Brands whose flagship is a single barrel by definition: the words "single
+  // barrel" appear in some catalog spellings and not others without naming a
+  // different product.
+  const IMPLICIT_SINGLE_BARREL = /\b(blanton|eagle rare|elmer t lee|rock hill farms|hancock|weller full proof)\b/;
+
+  function productKey(bottle) {
+    let n = String((bottle && bottle.name) || "").toLowerCase();
+    n = n
+      .replace(/[\u2019\u2018`]/g, "'")
+      .replace(/\([^)]*\)/g, " ")                                            // parentheticals
+      .replace(/\b\d+(?:\.\d+)?\s*(ml|l|liter|litre|ltr)\b/g, " ")               // bottle sizes
+      .replace(/\b20[0-3]\d\b/g, " ")                                         // release years (19xx are product names: 1920, 1792)
+      .replace(/\bbatch\s*(?:no\.?\s*)?[a-z]?\d+[a-z]?\b/g, " ")                 // batch codes
+      .replace(/\b[a-c]\d{3}\b/g, " ")                                        // A124-style codes
+      .replace(/\b(\d{1,2})\s*-?\s*(?:yrs?|years?|yo|y)\b\.?(?:\s+old)?/g, " $1 year ") // 10yr / 10-Year-Old → 10 year
+      .replace(/\b(\d{2,3}(?:\.\d)?)\s*(?:prf|proof|pf)\b/g, " $1 ")               // "107 Prf" → 107
+      .replace(/(\d{2,3})p\b/g, " $1 ")                                       // "Gentleman80p" → 80
+      .replace(/(\w)'s\b/g, "$1")                                             // possessives: blanton's → blanton
+      .replace(/\bw\.?\s*l\.?\s+weller\b/g, "weller")
+      .replace(/\bold\s+weller\b/g, "weller")
+      .replace(/\bs\s*\/\s*b\b/g, " single barrel ")                            // "10yr S/B"
+      .replace(/\bus\s*\*?\s*1\b/g, "us1")                                     // Michter's US*1
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+    const tokens = [];
+    for (const raw of n.split(" ")) {
+      if (!raw) continue;
+      const mapped = PRODUCT_TOKEN_MAP[raw] || raw;
+      for (const token of mapped.split(" ")) {
+        if (!PRODUCT_STOP_TOKENS.has(token)) tokens.push(token);
+      }
+    }
+    let key = tokens.join(" ");
+    if (IMPLICIT_SINGLE_BARREL.test(key)) key = key.replace(/\bsingle barrel\b/g, " ");
+    if (/^weller 107$/.test(key.trim())) key = "weller antique 107";
+    if (/^weller antique$/.test(key.trim())) key = "weller antique 107";     // Antique without its proof is still OWA
+    if (/^weller$/.test(key.trim())) key = "weller special reserve";           // plain "W.L. Weller" is the green label
+    if (/^eagle rare$/.test(key.trim())) key = "eagle rare 10 year";           // unaged "Eagle Rare" is the 10 year; 17 always says so
+    // Word order never names a different product ("Four Roses Single Barrel" is
+    // "Single Barrel Four Roses"), so sort the tokens into a canonical key.
+    key = key.split(" ").filter(Boolean).sort().join(" ");
+    return key || String((bottle && bottle.id) || "");
+  }
+
   // Is this an open-ended store-pick line (no finite batch list)?
   function isOpenPick(bottle) {
     if (batchLineFor(bottle)) return false;
@@ -739,6 +807,7 @@
     batchProof,
     batchYear,
     lineKey,
+    productKey,
     isOpenPick,
     lineType,
     collapse,

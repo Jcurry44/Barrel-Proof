@@ -242,13 +242,16 @@
     }
   ];
 
+  // Neutral default palate. The real palate is built per device from the
+  // user's profile (src/logic/profile.js) so no one inherits another person's
+  // name or taste. Nothing here should read like a specific drinker.
   const palate = {
-    name: "Joe",
-    proofPreference: 105,
-    favoriteProfiles: ["cherry", "oak", "caramel", "barrel proof", "baking spice", "dark cherry"],
+    name: "",
+    proofPreference: 100,
+    favoriteProfiles: [],
     avoidProfiles: ["thin", "young grain", "overpriced hype"],
-    priceDiscipline: 0.72,
-    noveltyPreference: 0.58
+    priceDiscipline: 0.7,
+    noveltyPreference: 0.5
   };
 
   const initialState = {
@@ -266,7 +269,8 @@
     flights: [],
     barcodeLinks: {},
     killLog: [],
-    identityLinks: {}
+    identityLinks: {},
+    profile: { name: "", proofComfort: "", flavors: [], onboardedAt: "" }
   };
 
   global.BarrelData = {

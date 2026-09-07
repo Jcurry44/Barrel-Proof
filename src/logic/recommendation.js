@@ -54,6 +54,30 @@
     };
   }
 
+  // The catalog's source price is whichever state's price the importer met
+  // first, but control-state shelf prices differ by 30%+ and the odd typo
+  // ($15,000 for a $150 bottle) slips through. Anchor on the observed RANGE:
+  //   - one observation: use it;
+  //   - a tight range (max/min <= 1.6): the midpoint is the typical shelf price;
+  //   - a wide range: sizes or errors are mixed in, so trust the low cluster
+  //     (the first price if it sits near the minimum, else the minimum itself).
+  function getSourceRetailPriceInfo(bottle) {
+    const first = getSourceRetailPrice(bottle);
+    if (!Number.isFinite(first)) return { value: null, observations: 0, spread: null, basis: "none" };
+    const summary = (bottle && bottle.sourceSummary) || {};
+    const observations = Number(summary.priceObservationCount) || 0;
+    const min = Number(summary.minRetailPrice);
+    const max = Number(summary.maxRetailPrice);
+    if (observations < 2 || !Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max < min) {
+      return { value: first, observations: Math.max(1, observations), spread: 1, basis: "single" };
+    }
+    const spread = max / min;
+    if (spread <= 1.6) {
+      return { value: Math.round(((min + max) / 2) * 100) / 100, observations, spread, basis: "midpoint" };
+    }
+    return { value: first <= min * 1.6 ? first : min, observations, spread, basis: "low-cluster" };
+  }
+
   function getReferencePrice(bottle) {
     return getReferencePriceInfo(bottle).value;
   }
@@ -88,23 +112,56 @@
       }
       return { value: bottle.msrp, type: "msrp", label: "MSRP reference", confidence: "medium" };
     }
-    const sourceRetailPrice = getSourceRetailPrice(bottle);
-    if (Number.isFinite(sourceRetailPrice)) {
+    const sourceInfo = getSourceRetailPriceInfo(bottle);
+    if (Number.isFinite(sourceInfo.value)) {
+      if (sourceInfo.basis === "midpoint") {
+        return {
+          value: sourceInfo.value,
+          type: "source",
+          label: "Typical state retail (" + sourceInfo.observations + " prices)",
+          confidence: sourceInfo.observations >= 3 ? "medium" : "low",
+          observations: sourceInfo.observations
+        };
+      }
+      if (sourceInfo.basis === "low-cluster") {
+        return {
+          value: sourceInfo.value,
+          type: "source",
+          label: "Source retail (prices vary widely)",
+          confidence: "low",
+          observations: sourceInfo.observations
+        };
+      }
       return {
-        value: sourceRetailPrice,
+        value: sourceInfo.value,
         type: "source",
         label: bottle.sourcePriceLabel || "Source retail",
-        confidence: "low"
+        confidence: "low",
+        observations: sourceInfo.observations
       };
     }
     return { value: null, type: "none", label: "No reference", confidence: "none" };
   }
 
-  function getPriceBands(bottle) {
+  function isAllocatedHint(bottle, options) {
+    return Boolean(options && options.allocated) || bottle.rarity === "Allocated" || bottle.rarity === "Unicorn";
+  }
+
+  function getPriceBands(bottle, options) {
     if (bottle.priceBands) return bottle.priceBands;
     const reference = getReferencePriceInfo(bottle);
     const referencePrice = reference.value;
     if (!Number.isFinite(referencePrice)) return null;
+    // An allocated bottle's state list price or MSRP is a price almost nobody
+    // gets. Judge it like the MSRP guardrail: near retail is a win, 2x is
+    // still reasonable for the hunt, 3x is where the market lives.
+    if (isAllocatedHint(bottle, options) && (reference.type === "source" || reference.type === "msrp")) {
+      return {
+        buy: Math.round(referencePrice * 1.25),
+        consider: Math.round(referencePrice * 2),
+        pass: Math.round(referencePrice * 3)
+      };
+    }
     if (reference.type === "source") {
       return {
         buy: Math.round(referencePrice * 0.85),
@@ -112,11 +169,13 @@
         pass: Math.round(referencePrice * 1.15)
       };
     }
+    // Secondary is what collectors pay, not what a bottle is worth to drink:
+    // a Buy has to sit well under it, and matching it is merely the going rate.
     if (reference.type === "secondary") {
       return {
-        buy: Math.round(referencePrice * 0.9),
-        consider: Math.round(referencePrice * 1.05),
-        pass: Math.round(referencePrice * 1.25)
+        buy: Math.round(referencePrice * 0.7),
+        consider: Math.round(referencePrice * 1.0),
+        pass: Math.round(referencePrice * 1.2)
       };
     }
     if (reference.type === "msrp-allocated") {
@@ -329,6 +388,29 @@
     return clamp(tagScore * 0.68 + proofScore * 0.32, 0, 1);
   }
 
+  // Palate fit is only a real signal when there is something to compare: flavor
+  // tags on the bottle AND favorite flavors on the palate, or a learned fit
+  // passed in from the recommender. Most catalog rows carry no flavor tags, so
+  // pretending to know (a proof-only 27%) misleads and drags every verdict down.
+  function getPalateFit(bottle, palate, options) {
+    const learned = options && Number.isFinite(options.learnedFit) ? clamp(options.learnedFit, 0, 1) : null;
+    const favorites = (palate && palate.favoriteProfiles) || [];
+    const hasTags = ((bottle && bottle.profile) || []).length > 0 || ((bottle && bottle.bestFor) || []).length > 0;
+    const hasFavorites = favorites.length > 0;
+    if (hasTags && hasFavorites) {
+      const tagFit = getPalateMatch(bottle, palate);
+      if (learned !== null) return { score: clamp(tagFit * 0.5 + learned * 0.5, 0, 1), known: true, basis: "blended" };
+      return { score: tagFit, known: true, basis: "tags" };
+    }
+    if (learned !== null) return { score: learned, known: true, basis: "learned" };
+    const proofPreference = Number(palate && palate.proofPreference);
+    if (Number.isFinite(proofPreference) && Number.isFinite(Number(bottle && bottle.proof))) {
+      const proofDelta = Math.abs(Number(bottle.proof) - proofPreference);
+      return { score: clamp(1 - proofDelta / 55, 0, 1), known: true, basis: "proof" };
+    }
+    return { score: 0.5, known: false, basis: "unknown" };
+  }
+
   function getReviewSignal(bottle) {
     const sourceCount = getReviewSourceCount(bottle);
     if (!hasSourcedReviewScore(bottle) || !Number.isFinite(bottle.reviewScore)) {
@@ -360,7 +442,7 @@
     return 0;
   }
 
-  function getPricePosition(bottle, shelfPrice) {
+  function getPricePosition(bottle, shelfPrice, options) {
     const price = Number(shelfPrice);
     if (!Number.isFinite(price) || price <= 0) {
       return {
@@ -375,7 +457,7 @@
 
     const reference = getReferencePriceInfo(bottle);
     const referencePrice = reference.value;
-    const bands = getPriceBands(bottle);
+    const bands = getPriceBands(bottle, options);
     if (!bands || !Number.isFinite(referencePrice)) {
       return {
         ratioToMsrp: Number.isFinite(bottle.msrp) ? price / bottle.msrp : null,
@@ -401,8 +483,10 @@
       message = "Below fair value. This is the buy zone.";
     } else if (price <= bands.consider) {
       grade = "Good";
-      score = 0.78;
-      message = "Close to fair value. Reasonable if you want it.";
+      score = reference.type === "secondary" ? 0.6 : 0.7;
+      message = reference.type === "secondary"
+        ? "Close to what the secondary market asks. You're paying the going rate, not finding a deal."
+        : "Close to fair value. Reasonable if you want it.";
     } else if (price <= bands.pass) {
       grade = "Stretched";
       score = 0.48;
@@ -413,7 +497,7 @@
       message = "Meaningfully above fair value. The bottle has to be special.";
     }
 
-    if (Number.isFinite(ratioToMsrp) && ratioToMsrp > 2.5 && bottle.hypeIndex > 80) {
+    if (Number.isFinite(ratioToMsrp) && ratioToMsrp > 2.5 && bottle.hypeIndex > 80 && reference.type !== "msrp-allocated") {
       score -= 0.08;
       message = "Hype tax is doing real work here.";
     }
@@ -445,15 +529,29 @@
   // full stop — these bottles trade at multiples of MSRP and may never be seen
   // at this price again. Owning one already makes a retail backup BETTER, not
   // worse. No score blend is allowed to talk someone out of a Handy at $70.
-  function isGrailSteal(bottle, shelfPrice) {
+  // options.allocated lets the caller pass what the availability model knows
+  // (brand tokens like "elmer t lee" or "stagg") for catalog rows that carry no
+  // rarity or hype fields of their own.
+  function isGrailSteal(bottle, shelfPrice, options) {
     const price = Number(shelfPrice);
     if (!Number.isFinite(price) || price <= 0) return false;
-    const allocated = bottle.rarity === "Unicorn" || bottle.rarity === "Allocated" || Number(bottle.hypeIndex) >= 85;
+    const allocated = isAllocatedHint(bottle, options) || Number(bottle.hypeIndex) >= 85;
     if (!allocated) return false;
     const msrp = Number(bottle.msrp);
     const fair = Number(bottle.fairPrice);
+    const secondary = getSecondaryMarketInfo(bottle).value;
+    const sourceRetail = getSourceRetailPriceInfo(bottle).value;
+    // The retail anchor: MSRP when curated, else the typical state list price.
+    const retail = Number.isFinite(msrp) ? msrp : (Number.isFinite(sourceRetail) ? sourceRetail : NaN);
     if (Number.isFinite(msrp) && price <= msrp * 1.15) return true;
     if (Number.isFinite(fair) && Number.isFinite(msrp) && fair >= msrp * 1.5 && price <= fair * 0.7) return true;
+    // Half of what the secondary market asks is a steal, as long as it is not
+    // already deep into collector territory relative to retail.
+    if (Number.isFinite(secondary) && price <= secondary * 0.5 && (!Number.isFinite(retail) || price <= retail * 2.5)) return true;
+    // No fair-value or secondary anchor at all: allocated bottles trade at
+    // multiples of retail, so anything within 1.5x retail is still well under
+    // what the market asks. A Weller 12 at $65 is a buy, not a "hype tax".
+    if (Number.isFinite(retail) && !Number.isFinite(fair) && !Number.isFinite(secondary) && price <= retail * 1.5) return true;
     return false;
   }
 
@@ -463,29 +561,44 @@
     const friends = input.friends || [];
     const status = input.status || "none";
     const shelfPrice = Number(input.shelfPrice);
-    const price = getPricePosition(bottle, shelfPrice);
-    const palateMatch = getPalateMatch(bottle, palate);
+    const allocationOptions = { allocated: Boolean(input.allocated) };
+    const price = getPricePosition(bottle, shelfPrice, allocationOptions);
+    const palateFit = getPalateFit(bottle, palate, { learnedFit: input.learnedFit });
+    const palateMatch = palateFit.score;
     const friendAverage = getFriendAverage(bottle.id, friends);
-    const friendScore = friendAverage ? clamp((friendAverage - 6.5) / 3, 0, 1) : 0.5;
+    const friendKnown = Number.isFinite(friendAverage);
+    const friendScore = friendKnown ? clamp((friendAverage - 6.5) / 3, 0, 1) : 0.5;
     const reviewSignal = getReviewSignal(bottle);
-    const grailSteal = isGrailSteal(bottle, shelfPrice);
+    const grailSteal = isGrailSteal(bottle, shelfPrice, allocationOptions);
     const ownedPenalty = status === "owned" && !grailSteal ? 0.16 : 0;
     const passedPenalty = status === "passed" && !grailSteal ? 0.08 : 0;
     const rarityBoost = bottle.rarity === "Unicorn" || bottle.rarity === "Allocated" ? 0.05 : 0;
-    const hypePenalty = bottle.hypeIndex > 88 && price.ratioToFair > 1.15 ? 0.12 : 0;
+    // Against a real fair/secondary reference, paying well over it on a hyped
+    // bottle is a hype tax. Against the MSRP guardrail it is not: every real
+    // shelf price for an allocated bottle sits above MSRP by definition.
+    const guardrailReference = Boolean(price.reference && price.reference.type === "msrp-allocated");
+    const hypePenalty = bottle.hypeIndex > 88 && price.ratioToFair > 1.15 && !guardrailReference ? 0.12 : 0;
 
-    let score = clamp(
-      price.score * 0.36 +
-        palateMatch * 0.24 +
-        friendScore * 0.18 +
-        reviewSignal.score * 0.17 +
-        rarityBoost -
-        ownedPenalty -
-        passedPenalty -
-        hypePenalty,
-      0,
-      1
-    );
+    // Only signals the app actually has get a vote. Filling unknown palate,
+    // club, and review signals with a neutral 0.5 capped every price-only
+    // verdict at "Consider" — a bottle well under its typical price could never
+    // be a Buy for someone who had not logged pours yet.
+    const priceKnown = price.grade !== "Unknown";
+    const components = [
+      { key: "price", weight: 0.36, score: price.score, known: priceKnown },
+      { key: "palate", weight: palateFit.basis === "proof" ? 0.12 : 0.24, score: palateMatch, known: palateFit.known },
+      { key: "friends", weight: 0.18, score: friendScore, known: friendKnown },
+      { key: "reviews", weight: 0.17, score: reviewSignal.score, known: reviewSignal.sourced }
+    ];
+    const knownComponents = components.filter((component) => component.known);
+    const knownWeight = knownComponents.reduce((sum, component) => sum + component.weight, 0);
+    const base = knownWeight > 0
+      ? knownComponents.reduce((sum, component) => sum + component.weight * component.score, 0) / knownWeight
+      : 0.5;
+    const evidence = {};
+    for (const component of components) evidence[component.key] = component.known;
+
+    let score = clamp(base + rarityBoost - ownedPenalty - passedPenalty - hypePenalty, 0, 1);
 
     if (price.grade === "Bad" && price.ratioToFair > 1.55 && bottle.hypeIndex > 80) {
       score = Math.min(score, 0.46);
@@ -505,8 +618,11 @@
     const cautions = [];
 
     if (grailSteal) {
-      const msrpText = Number.isFinite(Number(bottle.msrp)) ? " (MSRP " + money(Number(bottle.msrp)) + ")" : "";
-      reasons.push("Allocated-bottle economics: " + money(Number(shelfPrice)) + " on a bottle that trades far above retail" + msrpText + ". You may not see this price again — buy it.");
+      const sourceRetail = getSourceRetailPriceInfo(bottle).value;
+      const retailText = Number.isFinite(Number(bottle.msrp))
+        ? " (MSRP " + money(Number(bottle.msrp)) + ")"
+        : (Number.isFinite(sourceRetail) ? " (typical retail " + money(sourceRetail) + ")" : "");
+      reasons.push("Allocated-bottle economics: " + money(Number(shelfPrice)) + " on a bottle that trades far above retail" + retailText + ". You may not see this price again — buy it.");
       if (status === "owned") {
         reasons.push("You already own one — a backup at this price is the best deal in bourbon, not a reason to pass.");
       }
@@ -514,10 +630,12 @@
 
     reasons.push(price.message);
 
-    if (palateMatch >= 0.72) {
+    if (palateFit.known && palateFit.basis !== "proof" && palateMatch >= 0.72) {
       reasons.push("Strong fit for your palate profile.");
-    } else if (palateMatch <= 0.38) {
+    } else if (palateFit.known && palateFit.basis !== "proof" && palateMatch <= 0.38) {
       cautions.push("Palate fit is not obvious based on your saved preferences.");
+    } else if (palateFit.basis === "proof" && palateMatch <= 0.3) {
+      cautions.push("Well outside your usual proof range.");
     }
 
     if (friendAverage && friendAverage >= 8.6) {
@@ -530,7 +648,7 @@
       cautions.push("You already own this. It needs to be backup-bottle pricing.");
     }
 
-    if (bottle.hypeIndex > 88 && price.ratioToFair > 1.1) {
+    if (bottle.hypeIndex > 88 && price.ratioToFair > 1.1 && !guardrailReference) {
       cautions.push("Hype is likely inflating the shelf price.");
     }
 
@@ -542,12 +660,22 @@
       reasons.push("Near MSRP with sourced review support.");
     }
 
+    let evidenceNote = "";
+    if (priceKnown && !evidence.palate && !evidence.friends && !evidence.reviews) {
+      evidenceNote = "Judged on price alone so far. Log a few pours or add your club's cards to sharpen this call.";
+    } else if (priceKnown && !evidence.friends) {
+      evidenceNote = "No club ratings for this bottle yet.";
+    }
+
     return {
       decision,
       score,
       confidence: Math.round(score * 100),
+      evidence,
+      evidenceNote,
       price,
       palateMatch,
+      palateFit,
       friendAverage,
       friendScore,
       reviewScore: reviewSignal.value,
@@ -567,7 +695,7 @@
       : price && price.reference && price.reference.type === "secondary"
         ? "against secondary market"
         : price && price.reference && price.reference.type === "msrp-allocated"
-          ? "against an MSRP allocation guardrail"
+          ? "against MSRP for an allocated bottle"
           : "against the best price reference";
     return (
       decision +
@@ -607,6 +735,7 @@
     average,
     clamp,
     getFriendAverage,
+    getPalateFit,
     getPalateMatch,
     getReviewSignal,
     getPricePosition,
@@ -617,6 +746,7 @@
     getReferencePriceInfo,
     getSecondaryMarketInfo,
     getSourceRetailPrice,
+    getSourceRetailPriceInfo,
     money,
     isGrailSteal,
     rankBottlesForStore,

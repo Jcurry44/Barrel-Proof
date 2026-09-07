@@ -78,3 +78,39 @@ test("bottleConsensus summarizes how the room rated a bottle", () => {
   assert.equal(c.low, 8);
   assert.equal(club.bottleConsensus("not-rated", friends), null);
 });
+
+test("share tokens round-trip a club card through a URL, compressed when possible", async () => {
+  const card = club.buildCardFromState({
+    statuses: { "eagle-rare-10": "owned" },
+    tastings: [{ bottleId: "eagle-rare-10", score: 9.4 }, { bottleId: "imported-weller-antique-107-750ml-12345", score: 8.7 }]
+  }, palate);
+  const token = await club.buildShareToken(card);
+  assert.ok(token.startsWith("z.") || token.startsWith("j."), "token carries its encoding prefix");
+  assert.match(token, /^[A-Za-z0-9._-]+$/, "token is URL-safe");
+  const url = club.buildShareUrl("https://example.test/Barrel-Proof/index.html#old", token);
+  assert.equal(url, "https://example.test/Barrel-Proof/index.html#club=" + token);
+  assert.equal(club.extractShareToken(url), token);
+  assert.equal(club.extractShareToken("https://example.test/"), "");
+  const back = await club.parseShareToken(token);
+  assert.equal(back.name, "Joe");
+  assert.equal(back.ratings["eagle-rare-10"], 9.4);
+  assert.equal(back.ratings["imported-weller-antique-107-750ml-12345"], 8.7);
+  assert.deepEqual(back.owned, ["eagle-rare-10"]);
+  assert.deepEqual(back.favorites, ["eagle-rare-10", "imported-weller-antique-107-750ml-12345"]);
+});
+
+test("parseShareToken rejects garbage instead of throwing", async () => {
+  assert.equal(await club.parseShareToken(""), null);
+  assert.equal(await club.parseShareToken("x.notatoken"), null);
+  assert.equal(await club.parseShareToken("j.!!!"), null);
+  assert.equal(await club.parseShareToken("z.AAAA"), null);
+});
+
+test("a 60-rating card makes a link short enough for a group chat", async () => {
+  const ratings = {};
+  for (let i = 0; i < 60; i += 1) ratings["imported-some-kentucky-straight-bourbon-whiskey-750ml-" + (10000 + i)] = 7 + (i % 3);
+  const token = await club.buildShareToken({ source: club.CARD_APP, name: "Dana", ratings, favorites: [], owned: [] });
+  assert.ok(token.length < 1600, "compressed token is compact, got " + token.length);
+  const back = await club.parseShareToken(token);
+  assert.equal(Object.keys(back.ratings).length, 60);
+});

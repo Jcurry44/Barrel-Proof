@@ -115,3 +115,17 @@ test("idAliases migrate every kind of user data to surviving bottle ids", () => 
   assert.equal(state.barcodeLinks["012"], "new-eagle");
   assert.equal(state.flights[0].pours[0].bottleId, "new-weller");
 });
+
+test("schema v11 adds a per-device profile and keeps an existing one intact", () => {
+  const fresh = store.normalizeState({ schemaVersion: 10, activeBottleId: "rare-breed", statuses: {} }, defaults, { bottleIds: ["rare-breed"] });
+  assert.equal(fresh.schemaVersion, 11);
+  assert.deepEqual(fresh.profile, { name: "", proofComfort: "", flavors: [], onboardedAt: "" });
+
+  const kept = store.normalizeState({
+    schemaVersion: 11,
+    activeBottleId: "rare-breed",
+    statuses: {},
+    profile: { name: "Dana", proofComfort: "barrel", flavors: ["cherry", 7, "oak"], onboardedAt: "2026-09-07" }
+  }, defaults, { bottleIds: ["rare-breed"] });
+  assert.deepEqual(kept.profile, { name: "Dana", proofComfort: "barrel", flavors: ["cherry", "oak"], onboardedAt: "2026-09-07" });
+});

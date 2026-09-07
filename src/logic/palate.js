@@ -59,15 +59,25 @@
     return result;
   }
 
+  // The display name is authoritative. Aliases are alternate spellings that
+  // rode along when source rows merged, and a merge occasionally drags an
+  // expression-specific spelling ("Knob Creek 15YR") under a standard bottle —
+  // so aliases may only vouch for brand-level tokens (no digits), never for an
+  // age or batch the name itself does not carry.
+  function tokenHit(tokens, text, brandOnly) {
+    return tokens.some((t) => (!brandOnly || !/\d/.test(t)) && text.indexOf(norm(t).trim()) !== -1);
+  }
+
   function availabilityUncached(bottle) {
-    const hay = norm([bottle.name, Array.isArray(bottle.aliases) ? bottle.aliases.join(" ") : ""].join(" "));
+    const nameHay = norm(bottle.name);
+    const aliasHay = norm(Array.isArray(bottle.aliases) ? bottle.aliases.join(" ") : "");
     const rarity = bottle.rarity;
     const hype = Number(bottle.hypeIndex);
     if (rarity === "Unicorn" || (Number.isFinite(hype) && hype >= 96)) return AVAIL.unicorn;
-    if (UNICORN_TOKENS.some((t) => hay.indexOf(norm(t).trim()) !== -1)) return AVAIL.unicorn;
+    if (tokenHit(UNICORN_TOKENS, nameHay, false) || tokenHit(UNICORN_TOKENS, aliasHay, true)) return AVAIL.unicorn;
     if (rarity === "Allocated" || rarity === "Limited" || (Number.isFinite(hype) && hype >= 85)) return AVAIL.allocated;
-    if (ALLOCATED_TOKENS.some((t) => hay.indexOf(norm(t).trim()) !== -1)) return AVAIL.allocated;
-    if (ALLOCATED_PATTERN.test(hay)) return AVAIL.allocated;
+    if (tokenHit(ALLOCATED_TOKENS, nameHay, false) || tokenHit(ALLOCATED_TOKENS, aliasHay, true)) return AVAIL.allocated;
+    if (ALLOCATED_PATTERN.test(nameHay)) return AVAIL.allocated;
     return AVAIL.shelf;
   }
 
@@ -97,8 +107,12 @@
     map[key] = (map[key] || 0) + amount;
   }
 
+  // deps.seed = { flavors, proofPreference } from the person's own profile
+  // (first-run sheet). It makes the recommender useful before a single pour is
+  // logged; real interactions then outweigh it as they accumulate.
   function buildProfile(state, bottlesById, deps) {
     const families = deps && deps.families;
+    const seed = deps && deps.seed && typeof deps.seed === "object" ? deps.seed : null;
     const styleScores = {};
     const typeScores = {};
     const flavorScores = {};
@@ -152,10 +166,28 @@
       else if (status === "passed") applyBottle(bottle, -0.5);
     }
 
+    let seeded = false;
+    if (seed) {
+      for (const flavor of Array.isArray(seed.flavors) ? seed.flavors : []) {
+        const tag = String(flavor || "").toLowerCase().trim();
+        if (!tag) continue;
+        bump(flavorScores, tag, 0.9);
+        seeded = true;
+      }
+    }
+    const seedProof = seed && Number.isFinite(Number(seed.proofPreference)) ? Number(seed.proofPreference) : null;
+    if (seedProof !== null) seeded = true;
+
     const proofWeight = proofSamples.reduce((s, p) => s + p.weight, 0);
-    const proofPreference = proofWeight > 0
+    let proofPreference = proofWeight > 0
       ? proofSamples.reduce((s, p) => s + p.proof * p.weight, 0) / proofWeight
       : null;
+    // The stated preference counts like one strong pour; logged pours take over.
+    if (seedProof !== null) {
+      proofPreference = proofPreference === null
+        ? seedProof
+        : (proofPreference * proofWeight + seedProof) / (proofWeight + 1);
+    }
 
     const interactions = (state.tastings || []).length + (state.matchups || []).length +
       Object.keys(state.statuses || {}).length;
@@ -168,7 +200,8 @@
       proofPreference,
       signals,
       interactions,
-      ready: interactions >= 1
+      seeded,
+      ready: interactions >= 1 || seeded
     };
   }
 
@@ -213,19 +246,21 @@
       reasons.push(house);
     }
 
-    let flavorHits = 0;
+    const flavorHits = [];
     for (const tag of bottle.profile || []) {
-      const f = profile.flavorScores[String(tag).toLowerCase()] || 0;
+      const clean = String(tag).toLowerCase();
+      const f = profile.flavorScores[clean] || 0;
       if (f > 0) {
         score += clampSig(f) * 0.5;
-        flavorHits += 1;
+        flavorHits.push(clean);
       }
     }
-    if (flavorHits) reasons.push(flavorHits + " flavor match" + (flavorHits === 1 ? "" : "es"));
+    if (flavorHits.length) reasons.push(flavorHits.slice(0, 2).join(" & ") + " notes");
 
     if (Number.isFinite(profile.proofPreference) && Number.isFinite(Number(bottle.proof))) {
       const delta = Math.abs(Number(bottle.proof) - profile.proofPreference);
       score += Math.max(-0.4, 0.4 - delta / 25);
+      if (delta <= 8) reasons.push("in your proof lane");
     }
 
     return { score, reasons: reasons.slice(0, 3) };
@@ -276,8 +311,11 @@
         // Diversify: no more than 2 from the same distillery in the buy list.
         const house = houseOf(c.bottle);
         if ((houseCount[house] || 0) >= 2) continue;
-        houseCount[house] = (houseCount[house] || 0) + 1;
         c.price = realisticPrice(c.bottle, rec);
+        // "Prices you'll actually pay": a $300+ findable bottle only belongs in
+        // the buy lane when the learned palate is emphatic about it.
+        if (Number.isFinite(c.price.value) && c.price.value > 150 && c.learned < 1.2) continue;
+        houseCount[house] = (houseCount[house] || 0) + 1;
         c.rationale = buildRationale(c, profile);
         buyNow.push(c);
         seenNames.add(key);
@@ -296,7 +334,7 @@
   function buildRationale(c, profile) {
     const why = c.coldStart
       ? "a well-regarded, easy-to-find pour to start with"
-      : c.reasons.length ? "matches your " + c.reasons.join(", ") : "fits your taste";
+      : c.reasons.length ? describeReasons(c.reasons) : "a well-regarded pour that fits your taste";
     if (c.avail.tier === "shelf") {
       const p = c.price.value ? " around $" + Math.round(c.price.value) : "";
       return "Findable" + p + " — " + why + ".";
@@ -305,6 +343,18 @@
       return "Your palate would love it, but it's allocated — " + c.price.caption + ". Chase it; don't count on it.";
     }
     return "A grail for your taste — " + c.price.caption + ". Aspirational, not a shelf buy.";
+  }
+
+  // "cherry & oak notes, in your proof lane" → a sentence a friend would say.
+  function describeReasons(reasons) {
+    const parts = [];
+    for (const reason of reasons.slice(0, 2)) {
+      if (/ notes$/.test(reason)) parts.push("hits your " + reason);
+      else if (reason === "in your proof lane") parts.push("right in your proof lane");
+      else if (/^[a-z]/.test(reason)) parts.push("leans " + reason + " like you do");
+      else parts.push("from " + reason + ", a house you rate");
+    }
+    return parts.join("; ") || "fits your taste";
   }
 
   // Predict which of two bottles you'll prefer in a blind pour, from your

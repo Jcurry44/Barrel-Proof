@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
     <title>Barrel Proof</title>
     <meta name="description" content="A premium bourbon decision companion for store buys, shelf tracking, tastings, and private friend signals.">
     <meta name="theme-color" content="#120d0b">
@@ -13,9 +14,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Barrel Proof">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="preload" href="./fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="./fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="./styles.css">
     <script src="./src/data/bottles.js" defer></script>
     <script src="./src/data/friends.js" defer></script>
@@ -28,6 +28,7 @@
     <script src="./src/logic/showdown.js" defer></script>
     <script src="./src/logic/recommendation.js" defer></script>
     <script src="./src/logic/palate.js" defer></script>
+    <script src="./src/logic/profile.js" defer></script>
     <script src="./src/logic/collection.js" defer></script>
     <script src="./src/logic/prices.js" defer></script>
     <script src="./src/logic/research.js" defer></script>
@@ -43,5 +44,6 @@
   </head>
   <body>
     <div id="app" class="app-shell"></div>
+    <noscript><p style="padding:24px;font-family:system-ui,sans-serif;color:#f6eee2">Barrel Proof needs JavaScript to run. Enable it and reload.</p></noscript>
   </body>
 </html>
